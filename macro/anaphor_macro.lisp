@@ -206,6 +206,7 @@
   `(aif2 ,test
 	 (progn ,@body)))
 
+
 (defmacro awhile2 (test &body body)
   (let ((flag (gensym)))
     `(let ((,flag t))
@@ -224,3 +225,36 @@
 	   (if (or ,val ,win)
 	       (let ((it ,val)) ,@(cdr cl1))
 	       (acond2 ,@(cdr clauses))))))) 
+
+
+(let ((g (gensym))) ;; 把一个gensym传给read，万一遇到eof就返回它，免去了每次调用read2时构造gensym的麻烦
+  (defun read2 (&optional (str *standard-input*)) 
+    (let ((val (read str nil g))) ;; 内置的read指示错误的方式和get一样，接受一个可选参数来说明在遇到eof时是否报错，如果不报错的话，将返回读取到的值 
+      (unless (equal val g) ;; 读取报错，g和nil 
+	(values val t)))))  ;; 读取成功，read2返回两个值，读取的value和标志位t 
+
+;; do-file宏方便地遍历一个文件里的所有表达式
+(defmacro do-file (filename &body body)
+  (let ((str (gensym)))
+    `(with-open-file (,str ,filename)
+      (awhile2 (read2 ,str)
+	,@body))))
+
+(defun our-load (filename)
+  (do-file filename (eval it)))
+
+;; 14.3 引用透明 这个标准针对的是语言，而不是程序
+;; a 任意一个子表达式都可以替换成另一个子表达式，只要后者和前者的值相等
+;; b 在给定的上下文中，出现不同地方的同一表达式其取值都相同。
+
+;; 第一个和最后一个x带有不同的值，因为被一个setq干预了, 所以lisp是引用不透明的
+(list x
+  (setq x (not x))
+  x) 
+
+;; 它重定义了if，而if的本意并非是被用来创建新的上下文的。我们可以给指代宏取个自己的名字
+;; aif确实违背了另一个原则，它和引用透明无关：即，不管用什么办法，新建立的变量都应该在源代码里能很容易地分辨出来 
+(defmacro if-convinient (test then &optional else)
+  `(let ((that ,test))
+     (if that ,then ,else)))
+
