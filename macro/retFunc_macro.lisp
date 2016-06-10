@@ -85,6 +85,25 @@
 
 ;; (fn (compose (lambda (x) (+ x 3)) truncate)) ;; => #<FUNCTION :LAMBDA (#:G3375) ((LAMBDA (X) (+ X 3)) (TRUNCATE #:G3375))>
 
-;; (apply (fn (1+ find-if oddp)) '(2 3 4)) 
+(mapcar (fn (and integerp oddp))
+	'(c 3 p 0)) ;; => (NIL T NIL NIL)
+(mapcar (fn (or integerp symbolp))
+	'(c 3 p 0.2)) ;; => (T T T NIL)
 
-;; (funcall (fn (compose 1+ (find-if oddp))) '(2 3 4)) 
+(mapcar (fn (list 1- identity 1+)) 
+	'(1 2 3)) ;; ((0 1 2) (1 2 3) (2 3 4))
+;; => #<FUNCTION :LAMBDA (#:G3499) (LIST (1- #:G3499) (IDENTITY #:G3499) (1+ #:G3499))>
+
+(remove-if (fn (or (and integerp oddp)
+		   (and consp cdr)))
+	     '(1 (a b) c (d) 2 3.4 (e f g))) ;; => (C (D) 2 3.4)
+;; => #<FUNCTION :LAMBDA (#:G3500)
+;;  (OR ((LAMBDA (#:G3501) (AND (INTEGERP #:G3501) (ODDP #:G3501))) #:G3500)
+;;   ((LAMBDA (#:G3502) (AND (CONSP #:G3502) (CDR #:G3502))) #:G3500))>
+
+(1+ (find-if (fn oddp) '(2 3 4))) ;; 4
+
+(fn (list (1+ truncate)))
+;; #<FUNCTION :LAMBDA (#:G3488) (LIST ((LAMBDA (#:G3489) (1+ (TRUNCATE #:G3489))) #:G3488))>
+(compose #'list #'1+ #'truncate) 
+
