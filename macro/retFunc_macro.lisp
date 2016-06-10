@@ -96,7 +96,7 @@
 
 (remove-if (fn (or (and integerp oddp)
 		   (and consp cdr)))
-	     '(1 (a b) c (d) 2 3.4 (e f g))) ;; => (C (D) 2 3.4)
+	   '(1 (a b) c (d) 2 3.4 (e f g))) ;; => (C (D) 2 3.4)
 ;; => #<FUNCTION :LAMBDA (#:G3500)
 ;;  (OR ((LAMBDA (#:G3501) (AND (INTEGERP #:G3501) (ODDP #:G3501))) #:G3500)
 ;;   ((LAMBDA (#:G3502) (AND (CONSP #:G3502) (CDR #:G3502))) #:G3500))>
@@ -107,3 +107,43 @@
 ;; #<FUNCTION :LAMBDA (#:G3488) (LIST ((LAMBDA (#:G3489) (1+ (TRUNCATE #:G3489))) #:G3488))>
 (compose #'list #'1+ #'truncate) 
 
+;; 15.2 crd上做递归
+;; rec: rec必须是一个接受两个参数的函数，一个参数是列表的当前car，另一个参数是个函数，通过调用这个函数进行递归
+(defun lrec (rec &optional base)
+  (labels ((self (lst) 
+	     (if (null lst)
+		 (if (functionp base)
+		     (funcall base) 
+		     base)
+		 (funcall rec (car lst) 
+			  #'(lambda ()
+			      (self (cdr lst)))))))
+    #'self))  
+;; (lrec #'(lambda (x f) (1+ (funcall f))) 0)
+
+(defun our-length (lst)
+  (on-cdrs (1+ rec) 0 lst))
+
+(defun our-every (fn lst)
+  (on-cdrs (and (funcall fn it) rec) t lst))
+
+(defmacro alrec (rec &optional base)
+  "cltl2 version"
+  (let ((gfn (gensym)))
+    `(lrec #'(lambda (it ,gfn)
+	       (symbol-macrolet ((rec (funcall ,gfn)))
+		 ,rec))
+	   ,base)))
+
+;; (defmacro alrec (rec &optional base)
+;;   "cltl1 version"
+;;   (let ((gfn (gensym)))
+;;     `(lrec #'(lambda (it ,gfn)
+;;         (labels ((rec () (funcall ,gfn)))
+;;           ,rec))
+;;       ,base)))
+
+(defmacro on-cdrs (rec base &rest lsts)
+  `(funcall (alrec ,rec #'(lambda () ,base)) ,@lsts))
+
+;; (macroexpand-1  '(on-cdrs (1+ rec) 0 lst)) 
