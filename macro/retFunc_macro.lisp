@@ -107,7 +107,7 @@
 ;; #<FUNCTION :LAMBDA (#:G3488) (LIST ((LAMBDA (#:G3489) (1+ (TRUNCATE #:G3489))) #:G3488))>
 (compose #'list #'1+ #'truncate) 
 
-;; 15.2 crd上做递归
+;; 15.2 cdr上做递归
 ;; rec: rec必须是一个接受两个参数的函数，一个参数是列表的当前car，另一个参数是个函数，通过调用这个函数进行递归
 (defun lrec (rec &optional base)
   (labels ((self (lst) 
@@ -118,14 +118,14 @@
 		 (funcall rec (car lst) 
 			  #'(lambda ()
 			      (self (cdr lst)))))))
-    #'self))  
+    #'self))
+
+
 ;; (lrec #'(lambda (x f) (1+ (funcall f))) 0)
+;; (funcall (lrec #'(lambda (x f) (1+ (funcall f))) 0) '(1 2 3 5))
+;; (1+ (funcall #'(lambda () (self (cdr '(1 2 3 5))))))
+;; (1+ (1+ (funcall #'(lambda () (self (cdr '(2 3 5))))))
 
-(defun our-length (lst)
-  (on-cdrs (1+ rec) 0 lst))
-
-(defun our-every (fn lst)
-  (on-cdrs (and (funcall fn it) rec) t lst))
 
 (defmacro alrec (rec &optional base)
   "cltl2 version"
@@ -135,15 +135,78 @@
 		 ,rec))
 	   ,base)))
 
-;; (defmacro alrec (rec &optional base)
-;;   "cltl1 version"
-;;   (let ((gfn (gensym)))
-;;     `(lrec #'(lambda (it ,gfn)
-;;         (labels ((rec () (funcall ,gfn)))
-;;           ,rec))
-;;       ,base)))
+;; alrec是lrec的一种包装
+(defmacro alrec (rec &optional base)
+  (let ((gfn (gensym)))
+    `(lrec #'(lambda (it ,gfn)
+        (labels ((rec () (funcall ,gfn)))
+          ,rec))
+	   ,base)))
+
+(defmacro alrec (rec &optional base)
+  (let ((gfn (gensym)))
+    `(lrec #'(lambda (it ,gfn)
+         ((rec () (funcall ,gfn)))
+          ,rec))
+	   ,base)))
 
 (defmacro on-cdrs (rec base &rest lsts)
   `(funcall (alrec ,rec #'(lambda () ,base)) ,@lsts))
 
-;; (macroexpand-1  '(on-cdrs (1+ rec) 0 lst)) 
+
+
+(defun our-length (lst)
+  (on-cdrs 1+ 0 lst))
+
+;; (funcall (lrec #'(lambda (x f) (1+ (funcall f))) 0) '(1 2 3 5)) ;; => 4 
+;; (macroexpand-1 '(on-cdrs (1+ rec) 0 lst))
+;; (FUNCALL (ALREC (1+ REC) #'(LAMBDA () 0)) LST)
+;; (macroexpand-1 '(alrec (1+ rec) #'(LAMBDA () 0)))
+;; => (LREC #'(LAMBDA (IT #:G3493) (LABELS ((REC () (FUNCALL #:G3493))) (1+ REC))) 0)
+
+(our-length '(1 2 3))
+
+(defun our-every (fn lst)
+  (on-cdrs (and (funcall fn it) rec) t lst))
+
+;; length 
+(lrec #'(lambda(x f) (1+ (funcall f))) 0)
+;; find-if,for some function fn
+(lrec #'(lambda (x f) (if (fn x) x (funcall f))))
+
+(defun our-copy-list (lst)
+  (on-cdrs (cons it rec) nil lst))
+;; copy-list
+(lrec #'(lambda (x f) (cons x (funcall f))))
+
+(defun our-remove-duplicates (lst)
+  (on-cdrs (adjoin it rec) nil lst))
+
+(defun our-find-if (fn lst)
+  (on-cdrs (if (funcall fn it) it rec) nil lst))
+;; remove-duplicates
+(lrec #'(lambda (x f) (adjoin x (funcall f))))
+
+(defun our-some (fn lst)
+  (on-cdrs (or (funcall fn it) rec) nil lst))
+;; some,for some function fn
+(lrec #'(lambda (x f) (or (fn x) (funcall f))))
+
+;; 基于on-cdr的新工具 
+(defun unions (&rest sets)
+  (on-cdrs (union it rec) (car sets) (cdr sets)))
+(unions '(a b) '(b c) '(c d)) ;;
+
+(defun intersections (&rest sets)
+  (unless (some #'null sets)
+    (on-cdrs (intersection it rec) (car sets) (cdr sets))))
+
+(defun differences (set &rest outs)
+  (on-cdrs (set-difference rec it) set outs))
+
+(defun maxmin (args)
+  (when args
+    (on-cdrs (multiple-value-bind (mx mn) rec
+        (values (max mx it) (min mn it)))
+      (values (car args) (car args))
+      (cdr args))))
