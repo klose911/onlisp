@@ -9,6 +9,7 @@
   #'(lambda (&rest args) (not (apply fn args))))
 
 
+;; cdrµÝ¹é 
 (defun our-length (lst)
   (if (null lst)
       0
@@ -20,6 +21,8 @@
       t
       (and (funcall fn (car lst))
 	   (our-every fn (cdr lst)))))
+
+;; (our-every #'oddp '(1 3 5)) ;; => T
 
 (defun our-rec (fn lst)
   (if (null lst)
@@ -56,3 +59,7 @@
 (lrec #'(lambda (x f) (if (fn x) x (funcall f))))
 ;; some,for some function fn
 (lrec #'(lambda (x f) (or (fn x) (funcall f))))
+
+
+
+
