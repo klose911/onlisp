@@ -153,6 +153,6 @@
 			      (self (cdr tree)))))))) ;; ∂‘”¶funcall r
     #'self))
 
-(funcall (trec #'(lambda (o l r) (or (funcall l) (funcall r)))
-	       #'(lambda (tree) (and (oddp tree) tree))) ;; base
-	 '(2 (3 4) 5)) ;; 3 
+;; (funcall (trec #'(lambda (o l r) (or (funcall l) (funcall r)))
+;; 	       #'(lambda (tree) (and (oddp tree) tree))) ;; base
+;; 	 '(2 (3 4) 5)) ;; 3 
