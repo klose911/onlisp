@@ -196,4 +196,67 @@
 	     (cdr args))))
 ;; (maxmin '(1 3 56 233 -1 -100)) ;; => 233, -100
 
-;; 15.3 基于子数的递归
+;; 15.3 基于子树的递归
+
+(defmacro atrec (rec &optional (base 'it))
+  "cltl2 version"
+  (let ((lfn (gensym)) (rfn (gensym)))
+    `(trec #'(lambda (it ,lfn ,rfn)
+	       (symbol-macrolet ((left (funcall ,lfn))
+				 (right (funcall ,rfn)))
+		 ,rec))
+	   #'(lambda (it) ,base))))
+
+(defmacro atrec (rec &optional (base 'it))
+  "cltl1 version"
+  (let ((lfn (gensym)) (rfn (gensym)))
+    `(trec #'(lambda (it ,lfn ,rfn)
+	       (labels ((left () (funcall ,lfn))
+			(right () (funcall ,rfn)))
+		 ,rec))
+	   #'(lambda (it) ,base))))
+
+(defmacro on-trees (rec base &rest trees)
+  `(funcall (atrec ,rec ,base) ,@trees))
+
+(defun our-copy-tree (tree)
+  (on-trees (cons left right) it tree))
+;; (funcall (ttrav #'cons)
+;; 	 '((a b) c)) ;; => ((A B) C)
+;; (our-copy-tree '((a b) (e) f)) ;; => ((A B) (E) F)
+
+(defun count-leaves (tree)
+  (on-trees (+ left (or right 1)) 1 tree))
+;; (funcall (ttrav #'(lambda (left right)
+;; 		    (+ left (or right 1)))
+;; 		1)
+;; 	 '((a b (c d)) (e) f)) ;; => 10
+;; (count-leaves '((a b (c d)) (e) f)) ;; => 10
+
+(defun mklist (obj)
+  (if (listp obj) obj (list obj)))
+(defun flatten (tree)
+  (on-trees (nconc left right) (mklist it) tree))
+;; (funcall (ttrav #'nconc #'mklist)
+;; 	 '((a b (c d)) (e) f ())) ;; =>  (A B C D E F)
+;; (flatten '((a b (c d)) (e) f ())) ;; =>  (A B C D E F)
+
+(defun rfind-if (fn tree)
+  (on-trees (or left right)
+	    (and (funcall fn it) it)
+	    tree))
+;; (funcall (trec #'(lambda (o l r) (or (funcall l) (funcall r)))
+;; 	       #'(lambda (tree) (and (oddp tree) tree))) ;; base
+;; 	 '(2 (3 4) 5)) ;; 3
+
+;; (defun fint (fn &rest fns)
+;;   (if (null fns)
+;;       fn
+;;       (let ((chain (apply #'fint fns)))
+;;         #'(lambda (x) 
+;;             (and (funcall fn x) (funcall chain x))))))
+
+;; (rfind-if (fint #'numberp #'oddp) '(2 (3 4) 5)) ;; 3 
+
+;; 惰性求值
+
