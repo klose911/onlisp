@@ -258,5 +258,32 @@
 
 ;; (rfind-if (fint #'numberp #'oddp) '(2 (3 4) 5)) ;; 3 
 
-;; 惰性求值
+;; 惰性求值 只有当你需要表达式值的时候，才去求值它 
+;; 构造delay对象：代表着承诺，如果今后需要的话，就要给出表达式的值，同时这个承诺本身是个 Lisp 对象 
 
+(defconstant unforced (gensym))  
+
+;; delay结构体由两部分构成，第一个字段代表是否已经被求值了，如果是的话就被赋予这个值。第二个字段则是一个闭包，调用它就能得到该 delay 所代表的值
+(defstruct delay forced closure) 
+
+;; delay宏用来简化创建delpay结构体
+(defmacro delay (expr)
+  (let ((self (gensym)))
+    `(let ((,self (make-delay :forced unforced)))
+       (setf (delay-closure ,self)
+	     #'(lambda ()
+		 (setf (delay-forced ,self) ,expr)))
+       ,self)))
+
+;; 函数 force 接受任意对象：对于普通对象它就是 identity 函数，但对于 delay，它是对 delay 所代表的值的请求。
+(defun force (x)
+  (if (delay-p x)
+      (if (eq (delay-forced x) unforced)
+	  (funcall (delay-closure x))
+	  (delay-forced x))
+      x)) 
+
+;; (force 'a)  ;; => A 
+
+;; 无论何时，只要需要处理的对象有可能是 delay ，就应该用 force 对付它!!!! 
+;;  (sort lst #'(lambda (x y) (> (force x) (force y)))) 
