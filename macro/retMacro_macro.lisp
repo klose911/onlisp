@@ -1,30 +1,30 @@
-;; 16 ¶¨ÒåºêµÄºê
-;; 16.1 ËõÂÔÓï
+;; 16 å®šä¹‰å®çš„å®
+;; 16.1 ç¼©ç•¥è¯­
 
-;; Ê¹ÓÃrest ºÍ,@µÄ¹ßÓÃ·¨£¬¾ÍÒÑ¾­ÄÜÎªÈÎÒâÒ»¸öº¯Êı¡¢ºê£¬»òÕßspecial form¶¨ÒåÆäËõÂÔÓïÁË
+;; ä½¿ç”¨rest å’Œ,@çš„æƒ¯ç”¨æ³•ï¼Œå°±å·²ç»èƒ½ä¸ºä»»æ„ä¸€ä¸ªå‡½æ•°ã€å®ï¼Œæˆ–è€…special formå®šä¹‰å…¶ç¼©ç•¥è¯­äº†
 (defmacro dbind (&rest args)
   `(destructuring-bind ,@args))
 (defmacro mvbind (&rest args)
   `(multiple-value-bind ,@args))
 
-;; ÎªÁË¶¨ÒåÒ»¸ö¶¨ÒåºêµÄºê£¬ÒªÓÃµ½Ç¶Ì×µÄ·´ÒıÓÃ
+;; ä¸ºäº†å®šä¹‰ä¸€ä¸ªå®šä¹‰å®çš„å®ï¼Œè¦ç”¨åˆ°åµŒå¥—çš„åå¼•ç”¨
 
-;; °Ñ multiple-value-bind´Ó·´ÒıÓÃÀïÀ­³öÀ´µÄ»°
+;; æŠŠ multiple-value-bindä»åå¼•ç”¨é‡Œæ‹‰å‡ºæ¥çš„è¯
 ;; (defmacro mvbind (&rest args)
 ;;   (let ((name 'multiple-value-bind))
 ;;     `(,name ,@args)))
 
-;; °Ñ¿É±äµÄ±í´ïÊ½Ìæ»»³É±äÁ¿, mvbind->,short, multiple-value-bind -> ,long
+;; æŠŠå¯å˜çš„è¡¨è¾¾å¼æ›¿æ¢æˆå˜é‡, mvbind->,short, multiple-value-bind -> ,long
 ;; `(defmacro ,short (&rest args)
 ;;   (let ((name ',long))
 ;;     `(,name ,@args)))
 
-;; °Ñ´ú±ínameµÄshort£¬long´ÓÄÚ²ã·´ÒıÓÃÖĞÒÆµ½Íâ²ãabrevµÄ²ÎÊıÁĞ±íÖĞ£¬À´¼ò»¯±í´ïÊ½
+;; æŠŠä»£è¡¨nameçš„shortï¼Œlongä»å†…å±‚åå¼•ç”¨ä¸­ç§»åˆ°å¤–å±‚abrevçš„å‚æ•°åˆ—è¡¨ä¸­ï¼Œæ¥ç®€åŒ–è¡¨è¾¾å¼
 (defmacro abbrev (short long)
   `(defmacro ,short (&rest args)
      `(,`,long ,@args)))
 
-;; (abbrev dbind destructuring-bind) µÈ¼ÛÓëÓÃrestºÍ,@À´¶¨Òå
+;; (abbrev dbind destructuring-bind) ç­‰ä»·ä¸ç”¨restå’Œ,@æ¥å®šä¹‰
 
 (defun group (source n)
   (if (zerop n) (error "zero length"))
@@ -45,4 +45,4 @@
 ;;   mvbind multiple-value-bind
 ;;   mvsetq multiple-value-setq) 
 
-;; 16.2 ÊôĞÔ
+;; 16.2 å±æ€§
