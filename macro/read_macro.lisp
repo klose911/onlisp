@@ -58,4 +58,98 @@
 ;; (eq (funcall #?'a) 'a) => T 
 ;; (eq (funcall #?#'oddp) (symbol-function 'oddp)) => T
 
+;; 17.3 定界符
+;; 定义形如#[x y]的表达式，使得这样的表达式被读取为在x到y的闭区间上所有整数的列表
+(set-macro-character #\] (get-macro-character #\)))
+  (set-dispatch-macro-character #\# #\[
+   #'(lambda (stream char1 char2)
+     (declare (ignore char1 char2))
+     (let ((accum nil)
+	   ;; read-delimited-list函数的第一个参数是那个被当作列表结尾的字符]
+        (pair (read-delimited-list #\] stream t)))
+      (do ((i (ceiling (car pair)) (1+ i)))
+        ((> i (floor (cadr pair)))
+           (list 'quote (nreverse accum)))
+	(push i accum)))))
+;; #[2 7] => (2 3 4 5 6 7)
 
+;; 宏 defdelim 接受两个字符，一个参数列表，以及一个代码主体
+;; 参数列表和代码主体隐式地定义了一个函数
+(defmacro defdelim (left right parms &body body)
+  `(ddfn ,left ,right #'(lambda ,parms ,@body)))
+
+(let ((rpar (get-macro-character #\))))
+  (defun ddfn (left right fn)
+    ;; 读取到第二个字符为止
+    (set-macro-character right rpar)
+    ;; 首个字符定义为dispatching读取宏
+    (set-dispatch-macro-character #\# left
+				  #'(lambda (stream char1 char2)
+				      (declare (ignore char1 char2))
+				      ;; 将函数fn应用到它读到内容
+				      (apply fn
+					     (read-delimited-list right stream t))))))
+
+(defun mapa-b (fn a b &optional (step 1))
+  (do ((i a (+ i step))
+       (result nil))
+      ((> i b) (nreverse result))
+    (push (funcall fn i) result)))
+
+;; 这个定义和上面定义边界符[]的宏等价
+(defdelim #\[ #\] (x y)
+  (list 'quote (mapa-b #'identity (ceiling x) (floor y))))
+;; #[1 5] => (1 2 3 4 5)
+
+;; 复合像 list 和 1+ 这样的内置函数时，没有理由等到运行期才去对compose的调用求值
+(defun compose (&rest fns)
+  (if fns
+      (let ((fn1 (car (last fns)))
+            (fns (butlast fns)))
+        #'(lambda (&rest args)
+            (reduce #'funcall fns 
+                    :from-end t
+                    :initial-value (apply fn1 args))))
+      #'identity))
+
+(defun rbuild (expr)
+  (if (or (atom expr) (eq (car expr) 'lambda))
+      expr
+      (if (eq (car expr) 'compose)
+	  (build-compose (cdr expr))
+	  (build-call (car expr) (cdr expr)))))
+
+(defun build-call (op fns)
+  (let ((g (gensym)))
+    `(lambda (,g)
+       (,op ,@(mapcar #'(lambda (f)
+			  `(,(rbuild f) ,g))
+		      fns)))))
+
+(defun build-compose (fns)
+  (let ((g (gensym)))
+    `(lambda (,g)
+       ,(labels ((rec (fns)
+		      (if fns
+			  `(,(rbuild (car fns))
+			     ,(rec (cdr fns)))
+			  g)))
+		(rec fns)))))
+
+(defmacro fn (expr)
+  `#',(rbuild expr))
+
+;; 编译器生成复合函数！！！！ 
+(defdelim  #\{ #\}  (&rest args)
+  `(fn  (compose  ,@args)))
+;; #{list 1+} ;;  #<FUNCTION :LAMBDA (#:G3497) (LIST (1+ #:G3497))>
+;; (funcall #{list 1+} 7) ;; => (8)
+
+;; 17.4 这些发生于何时
+;; 读取宏是在常规宏之前作用的话，那么宏是怎样展开成含有读取宏的表达式的呢?
+(defmacro quotable ()
+  `(list 'able))
+;; 真相是：这个宏定义中的两个引用在这个defmacro表达式被读取时，就都被展开了，展开结果如下
+(defmacro quotable ()
+  (quote (list (quote able))))
+;; 在宏展开式里包含读取宏是没有什么问题的。因为一个读取宏的定义在读取期和编译期之间将不会（或者说不应该）发生变化!!!
