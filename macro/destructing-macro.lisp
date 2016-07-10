@@ -72,7 +72,7 @@
        ,(dbind-ex (destruc pat gseq #'atom) body))))
 
 (dbind (a b c) #(1 2 3)
-  (list a b c)) ;; => (1 2 3)
+       (list a b c)) ;; => (1 2 3)
 
 ;; (macroexpand-1 '(dbind (a b c) #(1 2 3)
 ;; 		 (list a b c))) 
@@ -135,7 +135,7 @@
 ;;        (list 3 4 5)) ;; => (3 4 5) 
 
 (dbind (a (b c) d) '(1 #(2 3) 4)
-  (list a b c d)) ;; => (1 2 3 4)
+       (list a b c d)) ;; => (1 2 3 4)
 
 ;; (macroexpand-1  '(dbind (a (b c) d) '(1 #(2 3) 4)
 ;; 		  (list a b c d))) 
@@ -145,7 +145,7 @@
 ;; 	 (PROGN (LIST A B C D)))))
 
 (dbind (a (b . c) &rest d) '(1 "fribble" 2 3 4)
-  (list a b c d)) ;; => (1 #\f "ribble" (2 3 4))
+       (list a b c d)) ;; => (1 #\f "ribble" (2 3 4))
 ;; (macroexpand-1 '(dbind (a (b . c) &rest d) '(1 "fribble" 2 3 4)
 ;; 		 (list a b c d)))
 ;; => (LET ((#:G3504 '(1 "fribble" 2 3 4)))
@@ -175,42 +175,272 @@
 (defmacro with-matrix (pats ar &body body)
   (let ((gar (gensym)))
     `(let ((,gar ,ar))
-      (let ,(let ((row -1))
-          (mapcan
-            #'(lambda (pat)
-              (incf row)
-              (let ((col -1))
-                (mapcar #'(lambda (p)
-                    `(,p (aref ,gar
-                        ,row
-                        ,(incf col))))
-                  pat)))
-            pats))
-        ,@body))))
+       (let ,(let ((row -1))
+		  (mapcan
+		   #'(lambda (pat)
+		       (incf row)
+		       (let ((col -1))
+			 (mapcar #'(lambda (p)
+				     `(,p (aref ,gar
+						,row
+						,(incf col))))
+				 pat)))
+		   pats))
+	 ,@body))))
 
 (defmacro with-array (pat ar &body body)
   (let ((gar (gensym)))
     `(let ((,gar ,ar))
-      (let ,(mapcar #'(lambda (p)
-            `(,(car p) (aref ,gar ,@(cdr p))))
-          pat)
-        ,@body)))) 
+       (let ,(mapcar #'(lambda (p)
+			 `(,(car p) (aref ,gar ,@(cdr p))))
+		     pat)
+	 ,@body)))) 
 
 (defmacro for ((var start stop) &body body)
   (let ((gstop (gensym)))
     `(do ((,var ,start (1+ ,var))
 	  (,gstop ,stop))
-      ((> ,var ,gstop))
-      ,@body)))
+	 ((> ,var ,gstop))
+       ,@body)))
 (setq ar (make-array '(3 3)))
- (for (r 0 2)
-  (for (c 0 2)
-    (setf (aref ar r c) (+ (* r 10) c))))
+(for (r 0 2)
+     (for (c 0 2)
+	  (setf (aref ar r c) (+ (* r 10) c))))
 
 (with-matrix ((a b c)
-    (d e f)
-    (g h i)) ar
-  (list a b c d e f g h i)) ;; => (0 1 2 10 11 12 20 21 22)
+	      (d e f)
+	      (g h i)) ar
+	      (list a b c d e f g h i)) ;; => (0 1 2 10 11 12 20 21 22)
 
 (with-array ((a 0 0) (d 1 1) (i 2 2)) ar
-  (values a d i)) ;; => 0, 11, 22
+	    (values a d i)) ;; => 0, 11, 22
+
+;; 18.3 结构体的解构
+
+(defun mkstr (&rest args)
+  (with-output-to-string (s)
+    (dolist (a args) (princ a s))))
+
+;; (mkstr pi " pieces of " 'pi) => "3.1415926535897932385L0 pieces of PI"
+
+(defun symb (&rest args)
+  (values (intern (apply #'mkstr args))))
+;; (symb 'ar "Madi" #\L #\L 0) => |ARMadiLL0| 
+
+;; name: 结构体名字作为前缀
+;; field: 字段名 
+(defmacro with-struct ((name . fields) struct &body body)
+  (let ((gs (gensym)))
+    `(let ((,gs ,struct))
+       (let ,(mapcar #'(lambda (f)
+			 `(,f (,(symb name f) ,gs)))
+		     fields)
+	 ,@body))))
+
+(defstruct visitor name title firm)
+(setq theo (make-visitor :name "Theodebert"
+			 :title 'king
+			 :firm 'franks))
+(with-struct (visitor- name firm title) theo
+  (list name firm title)) ;; => ("Theodebert" FRANKS KING) 
+;; (macroexpand-1 '(with-struct (visitor- name firm title) theo
+;;   (list name firm title))) 
+;; => (LET ((#:G3552 THEO))
+;;      (LET ((NAME (VISITOR-NAME #:G3552))
+;; 	   (FIRM (VISITOR-FIRM #:G3552))
+;; 	   (TITLE (VISITOR-TITLE #:G3552)))
+;;        (LIST NAME FIRM TITLE)))
+
+;; 18.3 引用的解构 
+(defclass thing ()
+  ((x :initarg :x :accessor thing-x)
+   (y :initarg :y :accessor thing-y)))
+;; => #<STANDARD-CLASS THING> 
+(setq thing (make-instance 'thing :x 0 :y 1))
+;; => #<THING #x000335767B08>
+;; with-slots宏中x实际上是thing这个对象的x属性直接引用！！！！
+;; incf会直接修改thing中的x的值
+(with-slots (x y) thing
+  (incf x) (incf y)) 
+(thing-x thing) ;; => 1
+(thing-y thing) ;; => 2
+
+;; 符号宏 
+;; call-by-name/symbol/ref， a是引用了thing中x属性的符号！！！
+(symbol-macrolet ((a (thing-x thing)))
+  (setf a 100))
+(thing-x thing) ;; => 100
+
+;; call-by-value a只是一个局部变量！！！！！
+(let ((a (thing-x thing)))
+  (setf a 200)) ;; => 200 
+(thing-x thing) ;; => 100
+
+;; with-slots宏是借助symbol-macrolet实现的,而不是let
+(defmacro with-places (pat seq &body body)
+  (let ((gseq (gensym)))
+    `(let ((,gseq ,seq))
+       ,(wplac-ex (destruc pat gseq #'atom) body))))
+
+(defun wplac-ex (binds body)
+  (if (null binds)
+      `(progn ,@body)
+      `(symbol-macrolet ,(mapcar #'(lambda (b)
+				     (if (consp (car b))
+					 (car b)
+					 b))
+				 binds)
+	 ,(wplac-ex (mapcan #'(lambda (b)
+				(if (consp (car b))
+				    (cdr b)))
+			    binds)
+		    body))))
+
+(with-places (a b c) #(1 2 3)
+	     (list a b c)) ;; => (1 2 3)
+(let ((lst '(1 (2 3) 4)))
+  (with-places (a (b . c) d) lst
+	       (setf a 'uno)
+	       (setf c '(tre)))
+  lst) ;; => (UNO (2 TRE) 4)
+
+;; dbind将一个变量关联一个值上，而with-places却是将变量关联到一组用来找到一个值的指令集合上, 每一个引用都需要进行一次查询,事实上dbind要快！！！！
+
+;; 18.4 匹配: 解构是赋值的泛化，匹配是解构的泛化
+
+;; (p ?x ?y c ?x)
+;; (p a b c a)
+;; 当 ?x = a 并且 ?y = b 时匹配
+
+;; (p ?x b ?y a)
+;; (p ?y b c a)
+;; 当 ?x = ?y = c 时匹配
+
+;; 约定：模式变量是以'？'开始的, 可以通过修改varsym?函数完成
+
+(defun varsym? (x)
+  (and (symbolp x) (eq (char (symbol-name x) 0) #\?)))
+;; (varsym? 'y) => NIL
+;; (varsym? '?y1) => T
+
+(defmacro aif (test-form then-form &optional else-form)
+  `(let ((it ,test-form))
+     (if it ,then-form ,else-form))) 
+
+;; x:模式变量，如果x存在于binds中，返回x的值以及他相关的绑定
+(defun binding (x binds)
+  (labels ((recbind (x binds)
+	     (aif (assoc x binds)
+		  (or (recbind (cdr it) binds)
+		      it))))
+    (let ((b (recbind x binds)))
+      (values (cdr b) b))))
+;; (binding '?x '((?Y . B) (?X . A))) ;; => A, (?X . A) 
+;; (assoc '?x '((?Y . B) (?X . A)))  ;; =>  (?X . A)
+
+(defmacro acond2 (&rest clauses)
+  (if (null clauses)
+      nil
+      (let ((cl1 (car clauses))
+	    (val (gensym))
+	    (win (gensym)))
+	`(multiple-value-bind (,val ,win) ,(car cl1)
+	   (if (or ,val ,win)
+	       (let ((it ,val)) ,@(cdr cl1))
+	       (acond2 ,@(cdr clauses)))))))
+
+(defun match (x y &optional binds)
+  (acond2
+   ;; x于y值相同，_是通配符 第一个返回值是当前的绑定，第二个返回值是T 
+   ((or (eql x y) (eql x '_) (eql y '_)) (values binds t)) ;; rule 1
+   ;; 模式变量x在当前绑定中能找到，校验y是否是绑定中的值，it的值是(binding x binds)的第一个返回值， 就是当前绑定中变量x绑定的值 
+   ((binding x binds) (match it y binds)) ;; rule 2 -> rule1 
+   ;; 模式变量y在当前绑定中能找到，校验x是否是绑定中的值
+   ((binding y binds) (match x it binds)) ;; rule 3 -> rule1
+   ;; 模式变量x无法在当前绑定找到对应的值，把x和y建立绑定
+   ((varsym? x) (values (cons (cons x y) binds) t)) ;; rule4 -> 执行rule6中(match (cdr x) (cdr y)..
+   ;; 模式变量x无法在当前绑定找到对应的值，把x和y建立绑定
+   ((varsym? y) (values (cons (cons y x) binds) t)) ;; rule5 -> 执行rule6中(match (cdr x) (cdr y).. 
+   ;; 如果(car x) 和 (car y)匹配， 则匹配 (cdr x) (cdr y) 
+   ((and (consp x) (consp y) (match (car x) (car y) binds)) 
+    (match (cdr x) (cdr y) it)) ;; rule6
+   ;; 不匹配
+   (t (values nil nil)))) ;; rule7 
+
+
+(match '(p a b c a) '(p ?x ?y c ?x))
+;; => ((?Y . B) (?X . A)), T
+;; rule6成立 
+(and (consp '(p a b c a)) (consp '(p ?x ?y c ?x)) (match 'p 'p nil)) ;; => NIL,T
+;; rule1成立
+(match 'p 'p nil) ;; => NIL,T 
+(match '(a b c a) '(?x ?y c ?x)) 
+;; rule5 成立
+(match 'a '?x) ;;  => ((?X . A)), T  
+(match '(b c a) '(?y c ?x)
+       '((?X . A))) 
+;; rule5 成立
+(match 'b '?y '((?X . A))) ;; => ((?Y . B) (?X . A)), T 
+(match '(c a) '(c ?x) '((?Y . B) (?X . A))) 
+;; rule6成立
+(match 'c 'c '((?Y . B) (?X . A))) 
+;; rule5 成立
+(match 'a '?x '((?Y . B) (?X . A)))
+;; rule4成立
+(binding '?x '((?Y . B) (?X . A))) ;; => A, (?X . A) 
+(match 'a '?x '((?Y . B) (?X . A))) ;; => ((?Y . B) (?X . A)), T
+
+;; 慢的匹配操作符
+(defmacro aif2 (test &optional then else)
+  (let ((win (gensym)))
+    `(multiple-value-bind (it ,win) ,test  
+       (if (or it ,win) ,then ,else))))
+
+;; pat: 模式，模式变量
+;; seq: 序列，具体的值
+;; then: 模式匹配成功后的执行语句
+;; else: 模式匹配失败后的执行语句
+(defmacro if-match (pat seq then &optional else)
+  ;; 通过比较模式跟序列来建立绑定 
+  `(aif2 (match ',pat ,seq)
+	 ;; 把then表达是出现的模式变量列表替换成序列中对应绑定的值
+	 (let ,(mapcar #'(lambda (v)
+			   `(,v (binding ',v it)))
+		       (vars-in then #'atom))
+	   ,then)
+	 ,else))
+
+;; 获取一个表达式中在出现的模式变量列表  
+(defun vars-in (expr &optional (atom? #'atom))
+  (if (funcall atom? expr)
+      (if (var? expr) (list expr))
+      (union (vars-in (car expr) atom?)
+	     (vars-in (cdr expr) atom?))))
+(defun var? (x)
+  (and (symbolp x) (eq (char (symbol-name x) 0) #\?)))
+
+(defun abab (seq)
+  (if-match (?x ?y ?x ?y) seq
+	    (values ?x ?y)
+	    nil))
+(abab '(hi ho hi ho)) ;; => HI, HO
+
+;; (match '(?x ?y ?x ?y) '(hi ho hi ho)) ;; => ((?Y . HO) (?X . HI)), T
+
+;; (vars-in '(values ?x ?y)) ;; => (?X ?Y)
+
+;; (mapcar #'(lambda (v)
+;; 	    `(,v (binding ',v '((?Y . HO) (?X . HI)))))
+;;         (vars-in '(values ?x ?y) #'atom))
+;; => ((?X (BINDING '?X '((?Y . HO) (?X . HI)))) (?Y (BINDING '?Y '((?Y . HO) (?X . HI)))))
+
+;; (macroexpand-1 '(if-match (?x ?y ?x ?y) seq
+;; 		 (values ?x ?y)
+;; 		 nil))
+;; => (AIF2 (MATCH '(?X ?Y ?X ?Y) SEQ)
+;; 	 (LET ((?X (BINDING '?X IT))
+;; 	       (?Y (BINDING '?Y IT)))
+;; 	   (VALUES ?X ?Y))
+;; 	 NIL)
+
+;; 快速匹配操作符
