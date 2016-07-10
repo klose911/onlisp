@@ -1,3 +1,3 @@
 ## Learn Lisp
-function programming sample of clisp
+common lisp learing material
  
