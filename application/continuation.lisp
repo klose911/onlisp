@@ -37,7 +37,8 @@
 (setq *cont* #'identity) 
 
 ;; =defun定义了一个函数和一个宏，这个宏会展开成对该函数的调用
-;; 宏定义必须在先，原因是被定义的函数有可能会调用自己，实际被调用的不是函数而是宏
+;; 宏定义必须在先，原因是被定义的函数有可能会调用自己
+;; 实际被调用的不是函数而是宏
 (defmacro =defun (name parms &body body)
   (let ((f (intern (concatenate 'string
                                 "=" (symbol-name name)))))
@@ -57,18 +58,22 @@
 ;;     (DEFUN =ADD1 (*CONT* X) ;; 定义了=add1函数, 这个函数会带上参数*cont*, 告诉那个由=defun定义的函数对其返回值做什么。
 ;;       (=VALUES (1+ X)))) ;; =add1函数通过=values来返回值
 
-;;  =values 的定义显示了这个续延的用场
+;; =values的定义显示了这个续延的用场
 (defmacro =values (&rest retvals)
+  ;; 调用当前的*cont*
   `(funcall *cont* ,@retvals)) 
 ;;(macroexpand-1 '(=values (1+ n))) 
 ;; (FUNCALL *CONT* (1+ N)) 
 
+(add1 2)
+;; => 3
+
 ;; (macroexpand '(add1 2)) ;;  (=ADD1 *CONT* 2)  
 ;; (funcall #'(lambda (*cont* n) (=values (1+ n))) *cont* 2) 
 
-;; 当=values被宏展开时，它将捕捉 *cont*，并用它模拟从函数返回值的过程
 ;; (macroexpand-1 '(=values (1+ n))) 
-;; => (FUNCALL *CONT* (1+ N)) 
+;; => (FUNCALL *CONT* (1+ N)) ;; 当=values被宏展开时，它将捕捉 *cont*，并用它模拟从函数返回值的过程
+
 
 (funcall #'(lambda (*cont* n) 
 	     (funcall *cont* (1+ n))) 
@@ -76,13 +81,15 @@
 ;; => 3 
 
 
-;; 如果带有相同数量参数的 =bind等着=values的话，它可以返回多值
+;; 如果有相同数量参数的=bind等着=values的话，它可以返回多值
 ;; 参数列表params，表达式expr，以及一个代码体body
 (defmacro =bind (parms expr &body body)
   `(let ((*cont* #'(lambda ,parms ,@body))) ;; =bind的展开式会创建一个称为 *cont* 的新变量
      ,expr)) ;; 参数将被绑定到表达式返回的值上，而代码体在这些绑定下被求值
 
+
 (=defun message ()
+  ;; 把'hello 'there作用于当前的*cont* 
   (=values 'hello 'there)) 
 
 ;;#'=message 
@@ -90,7 +97,9 @@
 ;; (macroexpand-1 '(=values 'hello 'there)) 
 ;; (FUNCALL *CONT* 'HELLO 'THERE)  
 
+
 (=defun baz ()
+  ;;把代码体(list m n)绑定到新创建的局部变量*cont*, 这个局部变量会被message捕获，并作用于'hello 'there 
   (=bind (m n) (message)
     (=values (list m n)))) 
 
@@ -117,7 +126,7 @@
 
 (let ((*cont* #'(lambda (m n) 
 		  (funcall *cont* (list m n))))) ;; baz代码体
-;; =message函数调用会利用新创建的*cont* 来 "返回" ，结果就是去求值baz的代码体
+  ;; =message函数调用会利用新创建的*cont* 来 "返回" ，结果就是去求值baz的代码体
   (funcall *cont* 'hello 'there))  
 ;;  => (HELLO THERE) 
 
@@ -135,25 +144,61 @@
 ;; => #'(LAMBDA (*CONT* X Y) (+ X Y))  
 
 ;; =funcall和=apply适用于由=lambda 定义的函数
-;; 注意那些用=defun 定义出来的"函数"，因为它们的真实身份是宏，所以不能作为参数传给apply 或funcall
+;; 注意那些用=defun 定义出来的"函数"，因为它们的真实身份是宏，所以不能作为参数传给apply或funcall
 (defmacro =funcall (fn &rest args)
   `(funcall ,fn *cont* ,@args))
 
 (defmacro =apply (fn &rest args)
   `(apply ,fn *cont* ,@args)) 
 
-(=defun add1 (x)
-  (=values (1+ x))) 
-
+;; 把(fn 9) 绑定到y， 然后再调用(format nil "9 + 1 = ~A" y)
 (let ((fn (=lambda (n) (add1 n))))
-  (=bind (y) (=funcall fn 9)
-    (format nil "9 + 1 = ~A" y))) ;; => "9 + 1 = 10" 
+  (=bind (y) (=funcall fn 9) 
+    (format nil "9 + 1 = ~A" y))) ;; => "9 + 1 = 10"
+
+;; (macroexpand-1 '(=bind (y) (=funcall fn 9)
+;; 		 (format nil "9 + 1 = ~A" y)))
+;; (LET ((*CONT* #'(LAMBDA (Y) (FORMAT NIL "9 + 1 = ~A" Y))))
+;;   (=FUNCALL FN 9))
+;; (macroexpand-1 '(=funcall (=lambda (n) (add1 n)) 9)) 
+;; (FUNCALL (=LAMBDA (N) (ADD1 N))
+;; 	 *CONT* 9)
+
+;; (LET ((*CONT* #'(LAMBDA (Y) (FORMAT NIL "9 + 1 = ~A" Y))))
+;;   (FUNCALL (=LAMBDA (N) (ADD1 N))
+;; 	   *CONT* 9) )
+
+;; (macroexpand-1 '(=lambda (n) (add1 n))) 
+;; #'(LAMBDA (*CONT* N) (ADD1 N))
+
+;; (FUNCALL #'(LAMBDA (*CONT* N) (ADD1 N))
+;; 	 #'(LAMBDA (Y) (FORMAT NIL "9 + 1 = ~A" Y)) 9)
+
+;; 延续宏的限制
+;; 一个用=defun定义的函数的参数列表必须完全由参数名组成。
+;; 使用续延，或者调用其他做这件事的函数的函数，必须用=lambda 或=defun 来定义。
+;; 这些函数必须终结于用=values 来返回值，或者调用其他遵守该约束的函数。
+;; 如果一个=bind ，=values ，或者=funcall 表达式出现在一段代码里，它必须是一个尾调用。任何在=bind之后求值的代码必须放在其代码体里。所以如果我们想要依次有几个=bind ，它们必须被嵌套：
+
+;; (=defun foo (x)
+;;   (=bind (y) (bar x)
+;;     (format t "Ho ")
+;;     (=bind (z) (baz x)
+;;       (format t "Hum.")
+;;       (=values x y z))))
 
 (defun dft (tree)
   (cond ((null tree) nil)
 	((atom tree) (princ tree))
 	(t (dft (car tree))
 	   (dft (cdr tree)))))
+
+(setq t1 '(a (b (d h)) (c e (f i) g))
+      t2 '(1 (2 (3 6 7) 4 5)))
+
+(dft t1)
+;; => (A (B (D H)) (C E (F I) G))
+;; => NIL
 
 (defvar *saved* nil)
 
@@ -175,3 +220,6 @@
     (cond ((eq node 'done) (=values nil))
 	  (t (princ node)
 	     (re-start)))))
+(dft2 t1)
+;; => ABDHCEFIG
+;; => NIL 
