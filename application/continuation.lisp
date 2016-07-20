@@ -28,3 +28,150 @@
 ;; 当续延被求值时，它返回的是使用自己的栈拷贝算出的结果，而没有用当前栈
 ;; 如果某个续延是在 T1 时刻创建的，而在 T2 时刻被求值，那么它求值时使用的将是 T1 时刻的栈!!!!! 
 
+;; 20.2  续延传递宏
+;; Scheme 的续延给了我们两样东西
+;; 1: 续延被创建时所有变量的绑定 -- 在一个词法作用域的 Lisp 里，闭包可以实现！！！
+;; 2: 计算的状态 从那时起将要发生什么 -- 闭包也可以实现，把计算的状态同样也保存在变量绑定里！！！ 
+
+;; *cont* 将被绑定到当前的续延
+(setq *cont* #'identity) 
+
+;; =defun定义了一个函数和一个宏，这个宏会展开成对该函数的调用
+;; 宏定义必须在先，原因是被定义的函数有可能会调用自己，实际被调用的不是函数而是宏
+(defmacro =defun (name parms &body body)
+  (let ((f (intern (concatenate 'string
+                                "=" (symbol-name name)))))
+    `(progn
+       (defmacro ,name ,parms
+         `(,',f *cont* ,,@parms)) 
+       (defun ,f (*cont* ,@parms) ,@body)))) 
+
+(=defun add1 (x) 
+  (=values (1+ x))) 
+;; => =ADD1 
+
+;; (macroexpand-1 '(=defun add1 (x) (=values (1+ x)))) 
+;; (PROGN 
+;;     (DEFMACRO ADD1 (X) ;; 定义了add1宏
+;;       (LIST '=ADD1 '*CONT* X))  ;; (add1 x) 会被展开成(=add1 *cont* x) 宏展开时的*cont*可能是全局变量，也可能是bind定义的局部代码体
+;;     (DEFUN =ADD1 (*CONT* X) ;; 定义了=add1函数, 这个函数会带上参数*cont*, 告诉那个由=defun定义的函数对其返回值做什么。
+;;       (=VALUES (1+ X)))) ;; =add1函数通过=values来返回值
+
+;;  =values 的定义显示了这个续延的用场
+(defmacro =values (&rest retvals)
+  `(funcall *cont* ,@retvals)) 
+;;(macroexpand-1 '(=values (1+ n))) 
+;; (FUNCALL *CONT* (1+ N)) 
+
+;; (macroexpand '(add1 2)) ;;  (=ADD1 *CONT* 2)  
+;; (funcall #'(lambda (*cont* n) (=values (1+ n))) *cont* 2) 
+
+;; 当=values被宏展开时，它将捕捉 *cont*，并用它模拟从函数返回值的过程
+;; (macroexpand-1 '(=values (1+ n))) 
+;; => (FUNCALL *CONT* (1+ N)) 
+
+(funcall #'(lambda (*cont* n) 
+	     (funcall *cont* (1+ n))) 
+	 *cont* 2) ;; 这里的*cont*是最初定义的#<SYSTEM-FUNCTION IDENTITY>
+;; => 3 
+
+
+;; 如果带有相同数量参数的 =bind等着=values的话，它可以返回多值
+;; 参数列表params，表达式expr，以及一个代码体body
+(defmacro =bind (parms expr &body body)
+  `(let ((*cont* #'(lambda ,parms ,@body))) ;; =bind的展开式会创建一个称为 *cont* 的新变量
+     ,expr)) ;; 参数将被绑定到表达式返回的值上，而代码体在这些绑定下被求值
+
+(=defun message ()
+  (=values 'hello 'there)) 
+
+;;#'=message 
+;; #<FUNCTION =MESSAGE (*CONT*) (DECLARE (SYSTEM::IN-DEFUN =MESSAGE)) (BLOCK =MESSAGE (=VALUES 'HELLO 'THERE))>  
+;; (macroexpand-1 '(=values 'hello 'there)) 
+;; (FUNCALL *CONT* 'HELLO 'THERE)  
+
+(=defun baz ()
+  (=bind (m n) (message)
+    (=values (list m n)))) 
+
+;;#'=baz
+;;#<FUNCTION =BAZ (*CONT*) (DECLARE (SYSTEM::IN-DEFUN =BAZ))
+;;     (BLOCK =BAZ (=BIND (M N) (MESSAGE) (=VALUES (LIST M N)))) 
+
+;; (macroexpand-1 '(=BIND (M N) (MESSAGE) (=VALUES (LIST M N))))  
+;; =bind 的展开式会创建一个称为 *cont* 的新变量。baz 的主体展开成：
+;;(LET ((*CONT* #'(LAMBDA (M N) 
+;; 		  (=VALUES (LIST M N)))))
+;;  (MESSAGE)) 
+
+;; (macroexpand-1 '(=values (list m n))) 
+;;(FUNCALL *CONT* (LIST M N)) 
+
+;; (macroexpand-1 '(message)) ;; 
+;;  (=MESSAGE *CONT*) 
+
+(let ((*cont* #'(lambda (m n) ;; 创建新的局部变量*cont*, 然后传递给=message函数 
+		  (funcall *cont* (list m n))))) ;; 这里的*cont*是调用=baz时候的全部变量*cont*( #<SYSTEM-FUNCTION IDENTITY>)
+  (=message *cont*)) 
+;; => (HELLO THERE) 
+
+(let ((*cont* #'(lambda (m n) 
+		  (funcall *cont* (list m n))))) ;; baz代码体
+;; =message函数调用会利用新创建的*cont* 来 "返回" ，结果就是去求值baz的代码体
+  (funcall *cont* 'hello 'there))  
+;;  => (HELLO THERE) 
+
+(funcall #'(lambda (m n) 
+	     (funcall *cont* (list m n)))  
+	 'hello 'there) 
+;;  => (HELLO THERE) 
+
+;; 每个*cont* 的绑定都包含了上一个*cont* 绑定的闭包，它们串成一条锁链，锁链的尽头指向那个全局的值。
+;; 当代码的主体求值到一个=values时，调用当前的*cont*就能够返回到最初的主调函数那里
+
+(defmacro =lambda (parms &body body) 
+  `#'(lambda (*cont* ,@parms) ,@body))
+;; (macroexpand-1 '(=lambda (x y) (+ x y)))  
+;; => #'(LAMBDA (*CONT* X Y) (+ X Y))  
+
+;; =funcall和=apply适用于由=lambda 定义的函数
+;; 注意那些用=defun 定义出来的"函数"，因为它们的真实身份是宏，所以不能作为参数传给apply 或funcall
+(defmacro =funcall (fn &rest args)
+  `(funcall ,fn *cont* ,@args))
+
+(defmacro =apply (fn &rest args)
+  `(apply ,fn *cont* ,@args)) 
+
+(=defun add1 (x)
+  (=values (1+ x))) 
+
+(let ((fn (=lambda (n) (add1 n))))
+  (=bind (y) (=funcall fn 9)
+    (format nil "9 + 1 = ~A" y))) ;; => "9 + 1 = 10" 
+
+(defun dft (tree)
+  (cond ((null tree) nil)
+	((atom tree) (princ tree))
+	(t (dft (car tree))
+	   (dft (cdr tree)))))
+
+(defvar *saved* nil)
+
+(=defun re-start ()
+  (if *saved*
+      (funcall (pop *saved*))
+      (=values 'done)))
+
+(=defun dft-node (tree)
+  (cond ((null tree) (re-start))
+	((atom tree) (=values tree))
+	(t (push #'(lambda () (dft-node (cdr tree)))
+		 *saved*)
+	   (dft-node (car tree)))))
+
+(=defun dft2 (tree)
+  (setq *saved* nil)
+  (=bind (node) (dft-node tree)
+    (cond ((eq node 'done) (=values nil))
+	  (t (princ node)
+	     (re-start)))))
