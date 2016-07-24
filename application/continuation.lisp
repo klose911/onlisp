@@ -65,7 +65,7 @@
 ;;(macroexpand-1 '(=values (1+ n))) 
 ;; (FUNCALL *CONT* (1+ N)) 
 
-(add1 2)
+;; (add1 2)
 ;; => 3
 
 ;; (macroexpand '(add1 2)) ;;  (=ADD1 *CONT* 2)  
@@ -75,9 +75,9 @@
 ;; => (FUNCALL *CONT* (1+ N)) ;; 当=values被宏展开时，它将捕捉 *cont*，并用它模拟从函数返回值的过程
 
 
-(funcall #'(lambda (*cont* n) 
-	     (funcall *cont* (1+ n))) 
-	 *cont* 2) ;; 这里的*cont*是最初定义的#<SYSTEM-FUNCTION IDENTITY>
+;; (funcall #'(lambda (*cont* n) 
+;; 	     (funcall *cont* (1+ n))) 
+;; 	 *cont* 2) ;; 这里的*cont*是最初定义的#<SYSTEM-FUNCTION IDENTITY>
 ;; => 3 
 
 
@@ -119,20 +119,20 @@
 ;; (macroexpand-1 '(message)) ;; 
 ;;  (=MESSAGE *CONT*) 
 
-(let ((*cont* #'(lambda (m n) ;; 创建新的局部变量*cont*, 然后传递给=message函数 
-		  (funcall *cont* (list m n))))) ;; 这里的*cont*是调用=baz时候的全部变量*cont*( #<SYSTEM-FUNCTION IDENTITY>)
-  (=message *cont*)) 
+;; (let ((*cont* #'(lambda (m n) ;; 创建新的局部变量*cont*, 然后传递给=message函数 
+;; 		  (funcall *cont* (list m n))))) ;; 这里的*cont*是调用=baz时候的全部变量*cont*( #<SYSTEM-FUNCTION IDENTITY>)
+;;   (=message *cont*)) 
 ;; => (HELLO THERE) 
 
-(let ((*cont* #'(lambda (m n) 
-		  (funcall *cont* (list m n))))) ;; baz代码体
-  ;; =message函数调用会利用新创建的*cont* 来 "返回" ，结果就是去求值baz的代码体
-  (funcall *cont* 'hello 'there))  
+;; (let ((*cont* #'(lambda (m n) 
+;; 		  (funcall *cont* (list m n))))) ;; baz代码体
+;;   ;; =message函数调用会利用新创建的*cont* 来 "返回" ，结果就是去求值baz的代码体
+;;   (funcall *cont* 'hello 'there))  
 ;;  => (HELLO THERE) 
 
-(funcall #'(lambda (m n) 
-	     (funcall *cont* (list m n)))  
-	 'hello 'there) 
+;; (funcall #'(lambda (m n) 
+;; 	     (funcall *cont* (list m n)))  
+;; 	 'hello 'there) 
 ;;  => (HELLO THERE) 
 
 ;; 每个*cont* 的绑定都包含了上一个*cont* 绑定的闭包，它们串成一条锁链，锁链的尽头指向那个全局的值。
@@ -152,9 +152,9 @@
   `(apply ,fn *cont* ,@args)) 
 
 ;; 把(fn 9) 绑定到y， 然后再调用(format nil "9 + 1 = ~A" y)
-(let ((fn (=lambda (n) (add1 n))))
-  (=bind (y) (=funcall fn 9) 
-    (format nil "9 + 1 = ~A" y))) ;; => "9 + 1 = 10"
+;; (let ((fn (=lambda (n) (add1 n))))
+;;   (=bind (y) (=funcall fn 9) 
+;;     (format nil "9 + 1 = ~A" y))) ;; => "9 + 1 = 10"
 
 ;; (macroexpand-1 '(=bind (y) (=funcall fn 9)
 ;; 		 (format nil "9 + 1 = ~A" y)))
@@ -196,30 +196,59 @@
 (setq t1 '(a (b (d h)) (c e (f i) g))
       t2 '(1 (2 (3 6 7) 4 5)))
 
-(dft t1)
+;;(dft t1)
 ;; => (A (B (D H)) (C E (F I) G))
 ;; => NIL
 
+;; *saved*用栈的结构来保存续延
 (defvar *saved* nil)
+
 
 (=defun re-start ()
   (if *saved*
-      (funcall (pop *saved*))
+      ;; 压出栈顶的续延，继续执行  
+      (funcall (pop *saved*)) 
       (=values 'done)))
 
-(=defun dft-node (tree)
-  (cond ((null tree) (re-start))
-	((atom tree) (=values tree))
+;; 对于每个节点返回相应的
+(=defun dft-node (tree) 
+  (cond ((null tree) (re-start)) ;; 当前分支到头，执行上个续延
+	((atom tree) (=values tree)) ;; 根节点，延时返回当前节点值
 	(t (push #'(lambda () (dft-node (cdr tree)))
-		 *saved*)
-	   (dft-node (car tree)))))
+		 *saved*) ;; 遍历cdr压入栈
+	   (dft-node (car tree))))) ;; 遍历car
 
+;; 对当前的续延进行求值
 (=defun dft2 (tree)
-  (setq *saved* nil)
-  (=bind (node) (dft-node tree)
-    (cond ((eq node 'done) (=values nil))
-	  (t (princ node)
+  (setq *saved* nil) ;; 清空栈
+  (=bind (node) (dft-node tree) ;; 绑定了dft-node中调用(=values tree)的*cont* 
+    (cond ((eq node 'done) (=values nil)) ;; 这段代码在=values会被执行 
+	  (t (princ node) 
 	     (re-start)))))
-(dft2 t1)
+;;(dft2 t1)
 ;; => ABDHCEFIG
 ;; => NIL 
+
+;; (macroexpand-1  '(=bind (node) (dft-node tree) ;; 
+;; 		  (cond ((eq node 'done) (=values nil))
+;; 			(t (princ node)
+;; 			   (re-start))))) 
+
+;; (LET ((*CONT* #'(LAMBDA (NODE)
+;; 		  (COND ((EQ NODE 'DONE) (=VALUES NIL))
+;; 			(T (PRINC NODE) (RE-START))))))
+;;   (DFT-NODE TREE))
+;;(macroexpand-1  '(dft-node tree)) ;;
+;;(=DFT-NODE *CONT* TREE)
+
+;; #'=dft-node
+;; #<FUNCTION =DFT-NODE (*CONT* TREE) (DECLARE (SYSTEM::IN-DEFUN =DFT-NODE))
+;; (BLOCK =DFT-NODE
+;;   (COND ((NULL TREE) (RE-START)) ((ATOM TREE) (=VALUES TREE))
+;; 	(T (PUSH #'(LAMBDA NIL (DFT-NODE (CDR TREE))) *SAVED*) (DFT-NODE (CAR TREE)))))
+
+;;(macroexpand-1  '(=values tree)) ;;
+;;(FUNCALL *CONT* TREE)
+
+;; =values 调用绑定的*cont*
+;; =bind 把代码体绑定到局部*cont* 
