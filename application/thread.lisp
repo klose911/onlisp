@@ -188,7 +188,7 @@
     (let ((g (gensym)))
       `(let* ((,g ,obj)
               ,@(mapcar #'list vars forms)
-              (,(car var) (delete ,g ,access ,@args)))
+              (,(car var) (delete ,g ,access ,@args)))!@
          ,set))))
 
 (defun unclaim (&rest f) (pull f *bboard* :test #'equal))
