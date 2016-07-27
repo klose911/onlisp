@@ -123,6 +123,7 @@
   `(arbitrator #'(lambda () ,test) ;; 测试函数
     #'(lambda (,parm) ,@body))) ;; 执行函数
 
+;; wait sample 
 (defvar *open-doors* nil)
 
 ;; 等待*open-doors*有值， 则输出Entering (car *open-doors*) 
@@ -160,6 +161,7 @@
 ;; (push 'door2 *open-doors*) 
 ;; (my-halt) ;; 停止
 
+
 ;; 让其他更高优先级的进程有机会运行 
 (defmacro my-yield (&body body)
   `(arbitrator nil ;; wait为空，永远可以执行
@@ -167,10 +169,11 @@
 
 (defun setpri (n) (setf (proc-pri *proc*) n))
 
-;; 抛出*halt*
+;; 抛出*halt*信号，终止进程表
 (defun my-halt (&optional val)
   (throw *halt* val))
 
+;;从进程表移除某个进程
 (defun my-kill-proc (&optional obj &rest args)
   (if obj
     (setq *procs* (apply #'delete obj *procs* args))
@@ -218,4 +221,40 @@
   (my-fork (host 'door2) 1))
 
 ;; (ballet) 
+;; (my-halt) 
+
+;; (macroexpand-1 '(my-wait d (car *bboard*) (=values d))) 
+;; (arbitrator #'(lambda () (car *bboard*))
+;; 	    #'(lambda (d) (=values d)))
+;; =values被展开成
+;; 这个闭包中有一个指向 *cont* 的引用，被这个等待函数挂起的进程将会拥有一个句柄(handle)，通过它，这个进程就能回到它当初被挂起的那一刻
+;; (arbitrator #'(lambda () (car *bboard*))
+;; 	    #'(lambda (d) (funcall *cont* d))) 
+
+
+;; change thread priority 
+(=defun capture (city)
+  (take city)
+  (setpri 1)
+  ;; fortity优先级被降低
+  (my-yield
+    (fortify city)))
+
+(=defun plunder (city)
+  (loot city)
+  (ransom city))
+
+(defun take (c) (format t "Liberating ~A.~%" c))
+
+(defun fortify (c) (format t "Rebuilding ~A.~%" c))
+
+(defun loot (c) (format t "Nationalizing ~A.~%" c))
+
+(defun ransom (c) (format t "Refinancing ~A.~%" c))
+
+(program barbarians ()
+  (my-fork (capture 'rome) 100)
+  (my-fork (plunder 'rome) 98))
+
+;; (barbarians)
 ;; (my-halt) 
