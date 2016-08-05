@@ -47,6 +47,15 @@
          `(,',f *cont* ,,@parms)) 
        (defun ,f (*cont* ,@parms) ,@body)))) 
 
+
+;; =values的定义显示了这个续延的用场
+;; =values 把retvals回传*cont* 
+(defmacro =values (&rest retvals)
+  ;; 调用当前的*cont*
+  `(funcall *cont* ,@retvals)) 
+;;(macroexpand-1 '(=values (1+ n))) 
+;; (FUNCALL *CONT* (1+ N)) 
+
 (=defun add1 (x) 
   (=values (1+ x))) 
 ;; => =ADD1 
@@ -57,13 +66,6 @@
 ;;       (LIST '=ADD1 '*CONT* X))  ;; (add1 x) 会被展开成(=add1 *cont* x) 宏展开时的*cont*可能是全局变量，也可能是bind定义的局部代码体
 ;;     (DEFUN =ADD1 (*CONT* X) ;; 定义了=add1函数, 这个函数会带上参数*cont*, 告诉那个由=defun定义的函数对其返回值做什么。
 ;;       (=VALUES (1+ X)))) ;; =add1函数通过=values来返回值
-
-;; =values的定义显示了这个续延的用场
-(defmacro =values (&rest retvals)
-  ;; 调用当前的*cont*
-  `(funcall *cont* ,@retvals)) 
-;;(macroexpand-1 '(=values (1+ n))) 
-;; (FUNCALL *CONT* (1+ N)) 
 
 ;; (add1 2)
 ;; => 3
@@ -83,6 +85,7 @@
 
 ;; 如果有相同数量参数的=bind等着=values的话，它可以返回多值
 ;; 参数列表params，表达式expr，以及一个代码体body
+;; =bind 把代码体body绑定到局部*cont*，然后执行表达式expr 
 (defmacro =bind (parms expr &body body)
   `(let ((*cont* #'(lambda ,parms ,@body))) ;; =bind的展开式会创建一个称为 *cont* 的新变量
      ,expr)) ;; 参数将被绑定到表达式返回的值上，而代码体在这些绑定下被求值
@@ -96,7 +99,6 @@
 ;; #<FUNCTION =MESSAGE (*CONT*) (DECLARE (SYSTEM::IN-DEFUN =MESSAGE)) (BLOCK =MESSAGE (=VALUES 'HELLO 'THERE))>  
 ;; (macroexpand-1 '(=values 'hello 'there)) 
 ;; (FUNCALL *CONT* 'HELLO 'THERE)  
-
 
 (=defun baz ()
   ;;把代码体(list m n)绑定到新创建的局部变量*cont*, 这个局部变量会被message捕获，并作用于'hello 'there 
@@ -130,9 +132,9 @@
 ;;   (funcall *cont* 'hello 'there))  
 ;;  => (HELLO THERE) 
 
-;; (funcall #'(lambda (m n) 
-;; 	     (funcall *cont* (list m n)))  
-;; 	 'hello 'there) 
+;; (funcall #'(lambda (m n) ;; baz中的代码体被传入message
+;; 	     (funcall *cont* (list m n))) ;; baz调用时候的*cont*依旧作为调用完baz代码体的返回  
+;; 	 'hello 'there) ;; message的参数被绑定到baz的代码体
 ;;  => (HELLO THERE) 
 
 ;; 每个*cont* 的绑定都包含了上一个*cont* 绑定的闭包，它们串成一条锁链，锁链的尽头指向那个全局的值。
@@ -250,5 +252,81 @@
 ;;(macroexpand-1  '(=values tree)) ;;
 ;;(FUNCALL *CONT* TREE)
 
-;; =values 调用绑定的*cont*
-;; =bind 把代码体绑定到局部*cont* 
+;; (dft-node '(a (b (d h)) (c e (f i) g)))
+;; 把 #'(lambda nil (dft-node '((b (d h)) (c e (f i) g))) 保存到*saved*
+;; 执行(dft-node 'a)
+;; 执行(=values 'a)
+;; 执行 (funcall #'(LAMBDA (NODE)
+;;  		  (COND ((EQ NODE 'DONE) (=VALUES NIL))
+;;  			(T (PRINC NODE) (RE-START)))) 'a)
+;; 打印 a 执行RE-START
+
+;; 从*saved*取出，执行 (dft-node '((b (d h)) (c e (f i) g)))
+;; 把 #'(lambda nil (dft-node '((c e (f i) g))) 保存到*saved*
+;; 执行 (dft-node '(b (d h)))
+;; 把#'(lambda nil (dft-node '((d h))) 保存到*saved*
+
+;; 执行 (dft-node 'b)
+;; 执行(=values 'b)
+;; 执行 (funcall #'(LAMBDA (NODE)
+;;  		  (COND ((EQ NODE 'DONE) (=VALUES NIL))
+;;  			(T (PRINC NODE) (RE-START)))) 'b)
+;; 打印 b 执行RE-START
+;; 执行(dft-node '((d h)))
+;; 把#'(lambda nil (dft-node nil) 保存到*saved*
+;; 执行(dft-node '(d h))
+;; 把#'(lambda nil (dft-node '(h)) 保存到*saved*
+;; 执行(dft-node 'd)
+;; 执行(=values 'd)
+;; 执行 (funcall #'(LAMBDA (NODE)
+;;  		  (COND ((EQ NODE 'DONE) (=VALUES NIL))
+;;  			(T (PRINC NODE) (RE-START)))) 'd)
+;; 打印d 执行RESTART 
+;; 执行(dft-node '(h))
+;; 把#'(lambda nil (dft-node nil) 保存到*saved*
+;; 执行(dft-node 'h)
+;; 执行(=values 'h)
+;; 执行 (funcall #'(LAMBDA (NODE)
+;;  		  (COND ((EQ NODE 'DONE) (=VALUES NIL))
+;;  			(T (PRINC NODE) (RE-START)))) 'h)
+;; 打印h 执行RESTART
+;; 执行 (dft-node nil)
+;; 执行RESTART
+;; 执行 (dft-node nil)
+;; 执行RESTART
+;; (dft-node '((c e (f i) g)))
+;; ........直到g被打印完毕, *saved*重新空
+;; 执行RESTART
+;; 执行(=VALUSE 'DONE)
+;; 执行 (funcall #'(LAMBDA (NODE)
+;;  		  (COND ((EQ NODE 'DONE) (=VALUES NIL))
+;;  			(T (PRINC NODE) (RE-START)))) 'DONE)
+;; 执行 (=VALUES NIL)
+;; 执行(FUNCALL *CONT* NIL) 这里的*CONT*是调用dft2时候的， 也就是#’identity ！！！
+;; 返回toplevel 
+
+;; 20.3 CPS
+(defun rev (x)
+  (if (null x)
+    nil
+    (append (rev (cdr x)) (list (car x)))))
+
+;; 在第一次递归时，续延是 identity；此时函数的任务就是向toplevel返回其当前的值
+(defun rev2 (x)
+  (revc x #'identity))
+
+;; 函数得到了一个附加的形参(这里是k)，其值将是当前的续延。这个续延是个闭包，它代表了对函数的当前值应该做些什么
+(defun revc (x k)
+  (if (null x)
+    (funcall k nil)
+    (revc (cdr x)
+      #'(lambda (w)
+	  (funcall k (append w (list (car x))))))))
+
+;; 在第二次递归时，续延将等价于
+#'(lambda (w)
+    (identity (append w (list (car x))))) ;; (cdr x) 是作为w的实参传入
+
+;; 为了做 CPS 转换，我们需要 code-walker，它是一种能够遍历程序源代码树的程序
+;; 为 Common Lisp 编写 code-walker 并非易事。要真正能有用，code-walker 的功能不能仅限于简单地遍历表达式。它还需要相当了解表达式的作用
+;; CPS实际上比续延更强大！！！
