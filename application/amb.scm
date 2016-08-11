@@ -65,3 +65,31 @@
 
 ;; (gen-prime 5) 
 ;; (bag-of (gen-prime 5)) 
+
+;; 基于广度优先搜索的choose fail
+;; [示例代码 22.14] choose 的 Scheme 版正确实现
+(define *paths* ())
+(define failsym '@)
+
+;; 基于广度优先搜索的choose，这样可以避免choose死循环
+(define (true-choose choices)
+  (call-with-current-continuation
+    (lambda (cc)
+      (set! *paths* (append *paths*
+;;当程序到达选择点的时候，与每一个选择相对应的续延都会被加入到用来保存路径的列表后面
+          (map (lambda (choice)
+              (lambda () (cc choice)))
+            choices)))
+      (fail))))
+
+(define fail)
+
+(call-with-current-continuation
+  (lambda (cc)
+    (set! fail
+      (lambda ()
+        (if (null? *paths*)
+          (cc failsym)
+          (let ((p1 (car *paths*)))
+            (set! *paths* (cdr *paths*))
+            (p1)))))))
