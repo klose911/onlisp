@@ -69,12 +69,90 @@
 ;; ATN编译器：能把整个的ATN变成对应的代码
 ;; 使用函数作为表达的方式：节点会成为函数，而转换路径则会变成函数里的代码块
 
+;;(cd "/home/klose/Documents/programming/lisp/onlisp/application") 
 (load "continuation.lisp")
 (load "amb.lisp")
 
+;; 寄存器组是用关联表来表示的
+;; ATN所使用的并不是寄存器组，而是一系列寄存器组
+;; 当分析器进入一个子网络时，它获得了一组新的空寄存器，这组寄存器被压在了已有寄存器组的上面
+
+;; 寄存器不需要事先声明。不管传给set-register的是什么名字，它都会用这个名字新建一个寄存器!!!
+(defmacro set-register (key val regs)
+  `(cons (cons (cons ,key ,val) (car ,regs))
+	 (cdr ,regs)))
+;;(set-register 'mood '(fantasy) regs) ;; (((MOOD FANTASY))) 
+;; (macroexpand-1 ' (set-register 'mood '(fantasy) 
+;; 			       regs))  
+;; (CONS (CONS
+;;        (CONS 'MOOD '(FANTASY))
+;;        (CAR REGS))
+;;       (CDR REGS)) 
+
+
+;; getr读一个寄存器
+(defmacro getr (key &optional (regs 'regs))
+  `(let ((result (cdr (assoc ',key (car ,regs)))))
+    (if (cdr result) result (car result))))
+
+;; (macroexpand-1 '(getr mood))
+;; (LET ((RESULT
+;;        (CDR (ASSOC 'MOOD (CAR REGS)))))
+;;   (IF (CDR RESULT)
+;;       RESULT
+;;       (CAR RESULT))) 
+
+;; setr设置寄存器
+(defmacro setr (key val regs)
+  `(set-register ',key (list ,val) ,regs))
+
+;; (macroexpand-1 '(setr mood 'decl regs))  
+;; (SET-REGISTER 'MOOD (LIST 'DECL) REGS)
+
+;; pushr把一个值加入寄存器
+(defmacro pushr (key val regs)
+  `(set-register ',key
+    (cons ,val (cdr (assoc ',key (car ,regs))))
+    ,regs))
+
+;; (macroexpand-1 '(pushr mood 'decl2 regs))
+;; (SET-REGISTER 'MOOD (CONS 'DECL2 (CDR (ASSOC 'MOOD (CAR REGS)))) REGS) 
+
+;; (setq klose-register (set-register 'klose '(good) regs))
+;;  (((KLOSE GOOD))) 
+;; (getr klose  klose-register) ;; good 
+;; (setq klose-register (setr mom 'better klose-register))
+;;  (((MOM BETTER) (KLOSE GOOD))) 
+;; (getr mom klose-register) ;; better 
+;; (setq klose-register (pushr mom 'best klose-register))
+;;  (((MOM BEST BETTER) (MOM BETTER) (KLOSE GOOD)))
+;; (getr mom klose-register)  ;; (best better)
+
+;; (setq test-register (setr Mood 'Decl (setr Subj 'Xman regs))) 
+;; test-register ;; (((MOOD DECL) (SUBJ XMAN)))
+
+;; push,cat和jump路径都可以包含表达式体。这些表达式只不过会是一些setr罢了
+;; 通过对它们的表达式体调用compile-cmds ，转移路径的展开函数会把一系列setr串在一起，成为一个单独的表达式
+(defun compile-cmds (cmds)
+  (if (null cmds)
+    'regs
+    `(,@(car cmds) ,(compile-cmds (cdr cmds)))))
+
+;; (compile-cmds '((setr a b) (setr c d)))
+;; (SETR A B (SETR C D REGS))
+
+;; (compile-cmds '((setr mood 'decl) (setr subj *)))
+;; => (SETR MOOD 'DECL (SETR SUBJ * REGS)) 
+
+;; (SETR MOOD 'DECL (SETR SUBJ * REGS))
+;; (((MOOD DECL) (SUBJ (NIL)))) 
+;; (macroexpand-1 '(SETR SUBJ * REGS))
+;; (macroexpand-1 '(SET-REGISTER 'SUBJ (LIST *) REGS))
+;; (CONS (CONS (CONS 'SUBJ (LIST *)) (CAR REGS)) (CDR REGS))
+
 ;; defnode宏被用来定义节点, 就是一个 choose
 ;; 节点函数有两个参数，分别是 pos 和 regs：
-;; pos: 是当前的输入指针(一个整数)
+;; pos: 是当前输入在句子中的位置(一个整数)
 ;; regs: 是当前的寄存器组(为一个关联表的列表) 
 (defmacro defnode (name &rest arcs)
   `(=defun ,name (pos regs) (choose ,@arcs)))
@@ -87,17 +165,17 @@
 ;; 	  <ARC 2>))
 
 ;; 路径转换
-(defmacro cat (cat next &rest cmds)
+(defmacro cat (category next &rest cmds)
   `(if (= (length *sent*) pos) ;; 
     (fail)
     (let ((* (nth pos *sent*))) ;; 符号*将会被绑定到当前的输入单词上
-      (if (member ',cat (types *)) ;;要求当前的输入单词在语法上属于某个类型
+      (if (member ',category (types *)) ;;要求当前的输入单词在语法上属于某个类型
         (,next (1+ pos) ,(compile-cmds cmds)) 
         (fail)))))
 ;; (macroexpand-1 '(cat v v
-;; 		 (setr mood 'imp)
+;; 		 (setr mood 'imp) 
 ;; 		 (setr subj '(np (pron you)))
-;; 		 (setr aux nil)
+;; 		 (setr aux nil) 
 ;; 		 (setr v *)))
 
 ;; (IF (= (LENGTH *SENT*) POS)
@@ -116,19 +194,36 @@
 ;; next: 当前网络的下个节点
 (defmacro down (sub next &rest cmds)
   ;; 虽然为cat路径生成的代码只是调用了网络中的下一个节点，但是为push路径生成的代码使用的是=bind
-  `(=bind (* pos regs)
-       (,sub pos (cons nil regs)) 
-     ;; 在push 路径中，*则是被绑定到从子网络返回的表达式
-     ;; regs被传入子网络前，一组新的空寄存器(nil)被cons到它的前面
-     (,next pos ,(compile-cmds cmds))))
+  `(=bind (* pos regs) ;; *绑定为当前网络的下一个节点，pos依旧是pos， regs被绑顶为,(compile-cmds cmds)
+       ;;对子网络的调用，调用结束后返回给当前网络
+       (,sub pos (cons nil regs)  ;; regs被传入子网络前，一组新的空寄存器(nil)被cons到它的前面
+	     ) 
+     ;; 在push路径中，*则是被绑定到从子网络返回的表达式
+     (,next pos ,(compile-cmds cmds)))) 
+
 ;; (macroexpand-1 '(down np s/subj
 ;; 		 (setr mood 'decl)
-;; 		 (setr subj *)))  
+;; 		 (setr subj *)))
+
 ;; (=BIND (* POS REGS)
+;;     (NP POS (CONS NIL REGS))
+;;   (S/SUBJ POS (SETR MOOD 'DECL (SETR SUBJ * REGS))))
+
+;; (macroexpand-1 '(=BIND (* POS REGS)
 ;;     (NP POS (CONS NIL REGS))
 ;;   (S/SUBJ POS
 ;; 	  (SETR MOOD 'DECL 
-;; 		(SETR SUBJ * REGS))))
+;; 	   (SETR SUBJ * REGS)))))
+;; (LET ((*CONT*
+;;        #'(LAMBDA (* POS REGS) 
+;; 	   (S/SUBJ POS (SETR MOOD 'DECL (SETR SUBJ * REGS))))))
+;;   (NP POS (CONS NIL REGS))) 
+
+;; (LET ((*CONT*
+;;        #'(LAMBDA (* POS REGS) 
+;; 	   (S/SUBJ POS (SETR MOOD 'DECL (SETR SUBJ * REGS))))))
+;;   (FUNCALL *CONT* NP POS (CONS NIL REGS)))  
+ 
 
 ;; jump路径就像发生了短路一样
 ;; 分析器直接跳到了目标节点，不需要进行条件测试，同时输入指针没有向前移动。
@@ -137,72 +232,54 @@
 
 ;; pop路径由up定义
 (defmacro up (expr)
-  `(let ((* (nth pos *sent*)))
-     ;;pop路径的=values "返回" 的是最近的一个push路径的=bind
-     ;;=bind的函数体已经被包在一个续延里了，并且被作为参数顺着之后的转移路径一直传下去，直到pop 路径的=values 把"返回" 值作为参数调用这个续延
+  `(let ((* (nth pos *sent*))) ;; 当前单词
     (=values ,expr pos (cdr regs))))
 
+;; (macroexpand-1 '(up `(sentence
+;;       (subject ,(getr subj))
+;; 	(verb ,(getr v))))) 
+;; (LET ((* (NTH POS *SENT*)))
+;;   (=VALUES `(SENTENCE (SUBJECT ,(GETR SUBJ)) (VERB ,(GETR V)))
+;; 	   POS (CDR REGS)))
 
-;; 寄存器组是用关联表来表示的
-;; ATN所使用的并不是寄存器组，而是一系列寄存器组
-;; 当分析器进入一个子网络时，它获得了一组新的空寄存器，这组寄存器被压在了已有寄存器组的上面
+(defmacro my-with-gensyms (syms &body body)
+  `(let ,(mapcar #'(lambda (s)
+                     `(,s (gensym)))
+                 syms)
+     ,@body))
 
-;; 寄存器不需要事先声明。不管传给set-register的是什么名字，它都会用这个名字新建一个寄存器!!!
-(defmacro set-register (key val regs)
-  `(cons (cons (cons ,key ,val) (car ,regs))
-	 (cdr ,regs)))
-;; (macroexpand-1 ' (SET-REGISTER 'SUBJ (LIST *)
-;; 			       REGS))
-;; (CONS (CONS (CONS 'SUBJ
-;; 		  (LIST *))
-;; 	    (CAR REGS))
-;;       (CDR REGS)) 
+;; 起始节点的名字、一个需要分析的表达式，以及一个代码体
+;; 代码体告诉with-parses应该如何处理返回的分析结果 
+(defmacro with-parses (node sent &body body)
+  (my-with-gensyms (pos regs)
+    `(progn
+      (setq *sent* ,sent)
+      (setq *paths* nil)
+      ;; 每次成功的分析动作都会引起对with-parses表达式中的代码体的一次求值
+      ;; 在代码体中，符号parse将会绑定到当前的分析结果上
+      ;; with-parses表达式会返回@ ，因为这正是fail 在穷途末路时的返回值。
+      (=bind (parse ,pos ,regs) (,node 0 '(nil))
+        (if (= ,pos (length *sent*))
+          (progn ,@body (fail))
+          (fail))))))  
 
-;; getr读一个寄存器
-(defmacro getr (key &optional (regs 'regs))
-  `(let ((result (cdr (assoc ',key (car ,regs)))))
-    (if (cdr result) result (car result))))
+(defun types (w)
+  (cdr (assoc w '((spot noun) (runs verb))))) 
 
-;; setr设置寄存器
-(defmacro setr (key val regs)
-  `(set-register ',key (list ,val) ,regs))
+(defnode s
+  (cat noun s2
+    (setr subj *)))
 
-;; (macroexpand-1 '(setr mood 'decl (setr subj * regs))) 
-;; (SET-REGISTER 'MOOD (LIST 'DECL)
-;; 	      (SETR SUBJ * REGS))
+(defnode s2
+  (cat verb s3
+    (setr v *)))
 
-;; (macroexpand-1 '(setr subj * regs))
-;; (SET-REGISTER 'SUBJ (LIST *) REGS)
+(defnode s3
+  (up `(sentence
+      (subject ,(getr subj))
+	(verb ,(getr v)))))
 
-;; pushr 把一个值加入寄存器
-(defmacro pushr (key val regs)
-  `(set-register ',key
-    (cons ,val (cdr (assoc ',key (car ,regs))))
-    ,regs))
+(with-parses s '(spot runs)
+  (format t "Parsing: ~A~%" parse)) ;; Parsing: (SENTENCE (SUBJECT SPOT) (VERB RUNS)) 
 
-(defvar regs nil)
-(setq klose-register (set-register 'klose '(good) regs))
-;; (((KLOSE GOOD))) 
-(getr klose  klose-register) ;; good 
-(setq klose-register (setr mom 'better klose-register))
-;; (((MOM BETTER) (KLOSE GOOD))) 
-(getr mom klose-register) ;; better 
-(setq klose-register (pushr mom 'best klose-register))
-;; (((MOM BEST BETTER) (MOM BETTER) (KLOSE GOOD)))
-(getr mom klose-register)  ;; (best better)
-
-(setq test-register (setr Mood 'Decl (setr Subj 'Xman regs))) 
-test-register ;; (((MOOD DECL) (SUBJ XMAN)))
-
-;; push,cat和jump路径都可以包含表达式体。这些表达式只不过会是一些setr罢了
-;; 通过对它们的表达式体调用compile-cmds ，转移路径的展开函数会把一系列setr串在一起，成为一个单独的表达式
-(defun compile-cmds (cmds)
-  (if (null cmds)
-    'regs
-    `(,@(car cmds) ,(compile-cmds (cdr cmds)))))
-
-;; (compile-cmds '((setr a b) (setr c d)))
-;; (SETR A B (SETR C D REGS))
-
-;; (compile-cmds '((setr mood 'decl) (setr subj *)))  
-;; => (SETR MOOD 'DECL (SETR SUBJ * REGS)) 
+;; 23.5 ATN的复杂例子
