@@ -93,7 +93,7 @@
 ;; getr读一个寄存器
 (defmacro getr (key &optional (regs 'regs))
   `(let ((result (cdr (assoc ',key (car ,regs)))))
-    (if (cdr result) result (car result))))
+     (if (cdr result) result (car result))))
 
 ;; (macroexpand-1 '(getr mood))
 ;; (LET ((RESULT
@@ -112,8 +112,8 @@
 ;; pushr把一个值加入寄存器
 (defmacro pushr (key val regs)
   `(set-register ',key
-    (cons ,val (cdr (assoc ',key (car ,regs))))
-    ,regs))
+		 (cons ,val (cdr (assoc ',key (car ,regs))))
+		 ,regs))
 
 ;; (macroexpand-1 '(pushr mood 'decl2 regs))
 ;; (SET-REGISTER 'MOOD (CONS 'DECL2 (CDR (ASSOC 'MOOD (CAR REGS)))) REGS) 
@@ -135,8 +135,8 @@
 ;; 通过对它们的表达式体调用compile-cmds ，转移路径的展开函数会把一系列setr串在一起，成为一个单独的表达式
 (defun compile-cmds (cmds)
   (if (null cmds)
-    'regs
-    `(,@(car cmds) ,(compile-cmds (cdr cmds)))))
+      'regs
+      `(,@(car cmds) ,(compile-cmds (cdr cmds)))))
 
 ;; (compile-cmds '((setr a b) (setr c d)))
 ;; (SETR A B (SETR C D REGS))
@@ -167,11 +167,11 @@
 ;; 路径转换
 (defmacro cat (category next &rest cmds)
   `(if (= (length *sent*) pos) ;; 
-    (fail)
-    (let ((* (nth pos *sent*))) ;; 符号*将会被绑定到当前的输入单词上
-      (if (member ',category (types *)) ;;要求当前的输入单词在语法上属于某个类型
-        (,next (1+ pos) ,(compile-cmds cmds)) 
-        (fail)))))
+       (fail)
+       (let ((* (nth pos *sent*))) ;; 符号*将会被绑定到当前的输入单词上
+	 (if (member ',category (types *)) ;;要求当前的输入单词在语法上属于某个类型
+	     (,next (1+ pos) ,(compile-cmds cmds)) 
+	     (fail)))))
 ;; (macroexpand-1 '(cat v v
 ;; 		 (setr mood 'imp) 
 ;; 		 (setr subj '(np (pron you)))
@@ -223,7 +223,7 @@
 ;;        #'(LAMBDA (* POS REGS) 
 ;; 	   (S/SUBJ POS (SETR MOOD 'DECL (SETR SUBJ * REGS))))))
 ;;   (FUNCALL *CONT* NP POS (CONS NIL REGS)))  
- 
+
 
 ;; jump路径就像发生了短路一样
 ;; 分析器直接跳到了目标节点，不需要进行条件测试，同时输入指针没有向前移动。
@@ -233,7 +233,7 @@
 ;; pop路径由up定义
 (defmacro up (expr)
   `(let ((* (nth pos *sent*))) ;; 当前单词
-    (=values ,expr pos (cdr regs))))
+     (=values ,expr pos (cdr regs))))
 
 ;; (macroexpand-1 '(up `(sentence
 ;;       (subject ,(getr subj))
@@ -248,38 +248,128 @@
                  syms)
      ,@body))
 
+;; ATN主体代码
 ;; 起始节点的名字、一个需要分析的表达式，以及一个代码体
-;; 代码体告诉with-parses应该如何处理返回的分析结果 
+;; 代码体告诉with-parses应该如何处理返回的分析结果
 (defmacro with-parses (node sent &body body)
   (my-with-gensyms (pos regs)
     `(progn
-      (setq *sent* ,sent)
-      (setq *paths* nil)
-      ;; 每次成功的分析动作都会引起对with-parses表达式中的代码体的一次求值
-      ;; 在代码体中，符号parse将会绑定到当前的分析结果上
-      ;; with-parses表达式会返回@ ，因为这正是fail 在穷途末路时的返回值。
-      (=bind (parse ,pos ,regs) (,node 0 '(nil))
-        (if (= ,pos (length *sent*))
-          (progn ,@body (fail))
-          (fail))))))  
+       (setq *sent* ,sent) ;; 要分析的句子
+       (setq *paths* nil)  ;; 保存续延
+       ;; 每次成功的分析动作都会引起对with-parses表达式中的代码体的一次求值
+       ;; 在代码体中，符号parse将会绑定到当前的分析结果上
+       ;; with-parses表达式会返回@ ，因为这正是fail在穷途末路时的返回值
+       (=bind (parse ,pos ,regs) (,node 0 '(nil))
+	 (if (= ,pos (length *sent*))
+	     (progn ,@body (fail))
+	     (fail))))))  
 
+;; 简单的词典
 (defun types (w)
   (cdr (assoc w '((spot noun) (runs verb))))) 
 
+;; 如果当前节点是名词，则转移到S2节点，并保存当前寄存器为(SUBJ 当前单词)供最后打印 
 (defnode s
-  (cat noun s2
-    (setr subj *)))
+    (cat noun s2 
+	 (setr subj *)))
+
+;; (macroexpand-1 '(defnode s
+;;     (cat noun s2
+;;      (setr subj *))))
+;; (=DEFUN S (POS REGS)
+;;   (CHOOSE (CAT NOUN S2
+;; 	       (SETR SUBJ *))))
+
+;; (macroexpand-1 '(=DEFUN S (POS REGS)
+;;   (CHOOSE (CAT NOUN S2
+;; 	   (SETR SUBJ *)))))
+;; (PROGN (DEFMACRO S (POS REGS)
+;; 	 (LIST '=S '*CONT* POS REGS))
+;;        (DEFUN =S (*CONT* POS REGS)
+;; 	 (CHOOSE (CAT NOUN S2
+;; 		      (SETR SUBJ *)))))
+
+;; (macroexpand-1 '(CHOOSE (CAT NOUN S2
+;; 		      (SETR SUBJ *))))  
+;; (IF (= (LENGTH *SENT*) POS)
+;;     (FAIL)
+;;     (LET ((* (NTH POS *SENT*)))
+;;       (IF (MEMBER 'NOUN (TYPES *))
+;; 	  (S2 (1+ POS)
+;; 	      (SETR SUBJ * REGS))
+;; 	  (FAIL))))
+
+;; (macroexpand-1 '(SETR SUBJ * REGS)) 
+;; (SET-REGISTER 'SUBJ (LIST *) REGS) 
+
+;; (macroexpand-1 '(SET-REGISTER 'SUBJ (LIST *) REGS))
+;; (CONS (CONS (CONS 'SUBJ (LIST *)) (CAR REGS)) (CDR REGS))
+
+;; (PROGN (DEFMACRO S (POS REGS)
+;; 	 (LIST '=S '*CONT* POS REGS))
+;;        (DEFUN =S (*CONT* POS REGS)
+;; 	 (CHOOSE
+;; 	  (IF (= (LENGTH *SENT*) POS)
+;; 	      (FAIL)
+;; 	      (LET ((* (NTH POS *SENT*)))
+;; 		(IF (MEMBER 'NOUN (TYPES *))
+;; 		    (S2 (1+ POS)
+;; 		        (CONS (CONS
+;; 			       (CONS 'SUBJ (LIST *))
+;; 			       (CAR REGS))
+;; 			      (CDR REGS)))
+;; 		    (FAIL)))))))
 
 (defnode s2
-  (cat verb s3
-    (setr v *)))
+    (cat verb s3
+	 (setr v *)))
 
+;; pop结点，打印结果(SENTENCE (SUBJECT 'SUBJ'寄存器中内容) (VERB 'V'寄存器中内同)) 
 (defnode s3
-  (up `(sentence
-      (subject ,(getr subj))
-	(verb ,(getr v)))))
+    (up `(sentence
+	  (subject ,(getr subj))
+	  (verb ,(getr v)))))
+
+;; (macroexpand-1 '(up `(sentence
+;; 	  (subject ,(getr subj))
+;; 	  (verb ,(getr v)))))
+;; (LET ((* (NTH POS *SENT*)))
+;;   (=VALUES `(SENTENCE (SUBJECT ,(GETR SUBJ))
+;; 		      (VERB ,(GETR V)))
+;; 	   POS (CDR REGS)))
+
+;; (macroexpand-1 '(=VALUES `(SENTENCE (SUBJECT ,(GETR SUBJ))
+;; 		      (VERB ,(GETR V)))
+;; 	   POS (CDR REGS))) 
+;; (FUNCALL *CONT* `(SENTENCE (SUBJECT ,(GETR SUBJ))
+;; 			   (VERB ,(GETR V)))
+;; 	 POS (CDR REGS))
 
 (with-parses s '(spot runs)
   (format t "Parsing: ~A~%" parse)) ;; Parsing: (SENTENCE (SUBJECT SPOT) (VERB RUNS)) 
+
+;; (macroexpand-1 '(with-parses s '(spot runs)
+;; 		 (format t "Parsing: ~A~%" parse)))
+;; (PROGN (SETQ *SENT* '(SPOT RUNS))
+;;        (SETQ *PATHS* NIL)
+;;  (=BIND (PARSE #:G3517 #:G3518) (S 0 '(NIL))
+;;    (IF (= #:G3517 (LENGTH *SENT*))
+;;        (PROGN (FORMAT T "Parsing: ~A~%" PARSE)
+;; 	      (FAIL))
+;;        (FAIL))))
+
+;; (macroexpand-1 '(=BIND (PARSE #:G3517 #:G3518) (S 0 '(NIL))
+;;    (IF (= #:G3517 (LENGTH *SENT*))
+;;        (PROGN (FORMAT T "Parsing: ~A~%" PARSE)
+;; 	      (FAIL))
+;;        (FAIL))))
+;; (LET
+;;     ((*CONT*
+;;       #'(LAMBDA (PARSE #:G3517 #:G3518)
+;; 	  (IF (= #:G3517 (LENGTH *SENT*))
+;; 	      (PROGN (FORMAT T "Parsing: ~A~%" PARSE)
+;; 		     (FAIL))
+;; 	      (FAIL)))))
+;;   (S 0 '(NIL)))
 
 ;; 23.5 ATN的复杂例子
