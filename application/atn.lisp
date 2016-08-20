@@ -230,6 +230,11 @@
 (defmacro jump (next &rest cmds)
   `(,next pos ,(compile-cmds cmds)))
 
+;; (macroexpand-1 '(jump np/det
+;; 		 (setr det nil)))
+;; (NP/DET POS
+;; 	(SETR DET NIL REGS))
+
 ;; pop路径由up定义
 (defmacro up (expr)
   `(let ((* (nth pos *sent*))) ;; 当前单词
@@ -345,8 +350,10 @@
 ;; 			   (VERB ,(GETR V)))
 ;; 	 POS (CDR REGS))
 
-(with-parses s '(spot runs)
-  (format t "Parsing: ~A~%" parse)) ;; Parsing: (SENTENCE (SUBJECT SPOT) (VERB RUNS)) 
+;; (with-parses s '(spot runs)
+;;   (format t "Parsing: ~A~%" parse))
+;; Parsing: (SENTENCE (SUBJECT SPOT) (VERB RUNS))
+
 
 ;; (macroexpand-1 '(with-parses s '(spot runs)
 ;; 		 (format t "Parsing: ~A~%" parse)))
@@ -373,3 +380,154 @@
 ;;   (S 0 '(NIL)))
 
 ;; 23.5 ATN的复杂例子
+
+;; 一个更大规模的字典函数
+;; 22 个词组成的词汇库，同时把每个词都和一个列表相关联，列表由一个或多个单词对应的语法角色构成
+(defun types (word)
+  (case word
+    ((do does did) '(aux v))
+    ((time times) '(n v))
+    ((fly flies) '(n v))
+    ((like) '(v prep))
+    ((liked likes) '(v))
+    ((a an the) '(det))
+    ((arrow arrows) '(n))
+    ((i you he she him her it) '(pron))))
+
+;; 修饰词字符串的子网络
+;; mods 是第一个节点，它接受一个名词。第二个节点是mods/n ，它会去寻找更多的名词或者返回一个分析结果
+(defnode mods
+    (cat n mods/n
+	 (setr mods *)))
+
+(defnode mods/n
+    (cat n mods/n
+	 (pushr mods *))
+  (up `(n-group ,(getr mods))))
+
+;; (with-parses mods '(time arrow)
+;;   (format t "Parsing: ~A~%" parse))
+;; Parsing: (N-GROUP (ARROW TIME))
+
+;; 名词短语子网络
+(defnode np
+    ;;读入一个限定词(比如说"the")
+    (cat det np/det
+	 (setr det *))
+  ;;直接跳转
+  (jump np/det
+	(setr det nil))
+  ;; 读到了一个代词，那么它就可以转移到节点pron 
+  (cat pron pron
+       (setr n *)))
+
+(defnode pron
+    ;; 弹出这个网络
+    (up `(np (pronoun ,(getr n)))))
+
+(defnode np/det
+    ;; 修饰词子网络
+    (down mods np/mods
+	  (setr mods *))
+	  ;; 直接进入
+	  (jump np/mods
+		(setr mods nil)))
+
+(defnode np/mods
+    (cat n np/n
+	 (setr n *)))
+
+(defnode np/n
+    (up `(np (det ,(getr det))
+	     (modifiers ,(getr mods))
+	     (noun ,(getr n))))
+  ;;跳到介词短语网络
+  (down pp np/pp
+	(setr pp *)))
+
+(defnode np/pp
+    (up `(np (det ,(getr det))
+	     (modifiers ,(getr mods))
+	     (noun ,(getr n))
+	     ,(getr pp))))
+
+;; (with-parses np '(it)
+;;   (format t "Parsing: ~A~%" parse))
+;; (NP (PRONOUN IT))
+
+;; (with-parses np '(arrows)
+;;   (pprint parse)) 
+;; (NP (DET NIL) (MODIFIERS NIL) (NOUN ARROWS))
+
+;;(with-parses np '(a time fly like him) (pprint parse))
+;; (NP (DET A)
+;;     (MODIFIERS (N-GROUP TIME))
+;;     (NOUN FLY)
+;;     (PP (PREP LIKE)
+;; 	(OBJ (NP (PRONOUN HIM)))))
+
+;; 介词短语网络
+(defnode pp
+    (cat prep pp/prep
+	 (setr prep *)))
+
+(defnode pp/prep
+    (down np pp/np
+	  (setr op *)))
+
+(defnode pp/np
+    (up `(pp (prep ,(getr prep))
+	     (obj ,(getr op)))))
+
+;; 整个句子网络
+(defnode s
+    ;; 陈述句
+    (down np s/subj
+	  (setr mood 'decl)
+	  (setr subj *))
+  ;; 祈使句
+  (cat v v
+       (setr mood 'imp)
+       (setr subj '(np (pron you)))
+       (setr aux nil)
+       (setr v *)))
+
+(defnode s/subj
+    (cat v v
+	 (setr aux nil)
+	 (setr v *)))
+
+(defnode v
+    (up `(s (mood ,(getr mood))
+	    (subj ,(getr subj))
+	    (vcl (aux ,(getr aux))
+		 (v ,(getr v)))))
+  (down np s/obj
+	(setr obj *)))
+
+(defnode s/obj
+    (up `(s (mood ,(getr mood))
+	    (subj ,(getr subj))
+	    (vcl (aux ,(getr aux))
+		 (v ,(getr v)))
+	    (obj ,(getr obj)))))
+
+;; (with-parses s '(time flies like an arrow)
+;;   (pprint parse))　
+
+;; (S (MOOD DECL)
+;;    (SUBJ (NP (DET NIL) (MODIFIERS (N-GROUP TIME))
+;; 			 (NOUN FLIES)))
+;;    (VCL (AUX NIL) (V LIKE))
+;;    (OBJ (NP (DET AN) (MODIFIERS NIL) (NOUN ARROW))))
+
+;; (S (MOOD IMP)
+;;    (SUBJ (NP (PRON YOU)))
+;;    (VCL (AUX NIL) (V TIME))
+;;    (OBJ (NP (DET NIL)
+;; 	    (MODIFIERS NIL)
+;; 	    (NOUN FLIES)
+;; 	    (PP (PREP LIKE)
+;; 		(OBJ (NP (DET AN)
+;; 			 (MODIFIERS NIL)
+;; 			 (NOUN ARROW)))))))
