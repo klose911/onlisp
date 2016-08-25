@@ -1,25 +1,25 @@
-;; 23 ʹ��ATN��������
-;; 23.1 ����֪ʶ
-;; ����ת������(ATN)���� Bill Woods��1970�������һ�ַ�����
-;; 1. �������������������Ƶ�����
-;; 2. ���ܸ��������ѵ����� 
-;; 3. ����������Ӣ������������ʵ�˳��������﷨�ṹ������
-;; 4. ��Ҫ��Ϊ������������������
+;; 23 使用ATN分析句子
+;; 23.1 背景知识
+;; 扩充转移网络(ATN)，是 Bill Woods在1970年提出的一种分析器
+;; 1. 仅限用于语义上有限制的领域
+;; 2. 不能给过于困难的输入 
+;; 3. 仅仅适用于英语，或者其他单词的顺序决定其语法结构的语言
+;; 4. 不要认为它们总是能正常工作
 
-;; 23.2 ��ʽ��
-;; ����ת������(Augmented Transition Network)
-;; ��ָ������·������������һ��ڵ㣬�Ӹ����Ͽ��԰�������һ������ͼ
-;; ����һ���ڵ㱻ָ��Ϊ��ʼ�ڵ㣬�����������ڵ�����Ϊ�ս�ڵ�
-;; ÿ��·���϶����в���������ֻ�ж�Ӧ�������������ʱ��״̬���ܾ�������·��ת�Ƶ��µĽڵ�
+;; 23.2 形式化
+;; 扩充转移网络(Augmented Transition Network)
+;; 是指由有向路径连接起来的一组节点，从根本上可以把它看作一种流程图
+;; 其中一个节点被指定为起始节点，而部分其他节点则被作为终结节点
+;; 每条路径上都带有测试条件，只有对应的条件被满足的时候，状态才能经由这条路径转移到新的节点
 
-;; ���ȣ�������һ�����У�����һ��ָ��ǰ���ʵ�ָ�롣����·������״̬ת�ƻ�ʹָ����Ӧ��ǰ����ʹ��ת������������ӵĹ��̣������ҵ�����ʼ�ڵ��ߵ�ĳ����ֹ�ڵ��·���Ĺ��̣�����������У����е�ת��������Ҫ����
+;; 首先，输入是一个序列，并有一个指向当前单词的指针。根据路径进行状态转移会使指针相应地前进。使用转移网络分析句子的过程，就是找到从起始节点走到某个终止节点的路径的过程，在这个过程中，所有的转移条件都要满足
 
-;; ATN �����ģ�͵Ļ��������������������ԣ�
+;; ATN 在这个模型的基础上另加入了两个特性：
 
-;; 1. ATN���мĴ���, �Ĵ����������ֵ�slot�����Ա������������������������й���Ϣ
-;;    ת��·�������ܽ��������ж�֮�⣬�������ú��޸ļĴ����е����ݡ�
-;; 2. ATN �Ľṹ�����ǵݹ��
-;;    ת��·����������Ҫ�����Ҫͨ������·�����������̱�����ͨ��ĳ��������, ���ս�ڵ���ʹ�üĴ������ۻ��õ���Ϣ�������б��ṹ��������
+;; 1. ATN带有寄存器, 寄存器是有名字的slot，可以被用来保存分析过程中所需的有关信息
+;;    转移路径除了能进行条件判断之外，还会设置和修改寄存器中的内容。
+;; 2. ATN 的结构可以是递归的
+;;    转移路径可以这样要求：如果要通过这条路径，分析过程必须能通过某个子网络, 而终结节点则使用寄存器中累积得到信息来建立列表结构并返回它
 
 ;; noun verb pop
 
@@ -36,48 +36,48 @@
 ;;       (subject ,(getr subj))
 ;;       (verb ,(getr v)))))
 
-;; �� ATN ������������ (spot runs) ʱ��������ι������أ�
+;; 当 ATN 分析输入序列 (spot runs) 时，它是如何工作的呢？
 
-;; ��һ���ڵ���һ����·��(outgoingarc)������˵һ������·��(cat)������·��ָ��ڵ�s2
-;; ����ʵ�ϣ������ǰ�����Ǹ����ʵĻ�����Ϳ���ͨ���ң������ͨ���ҵĻ��������ѵ�ǰ����(��*)������subj �Ĵ����С���������뿪����ڵ�ʱ��subj �����ݾͱ����spot
+;; 第一个节点有一条出路径(outgoingarc)，或者说一条类型路径(cat)，这条路径指向节点s2
+;; 这事实上：如果当前单词是个名词的话，你就可以通过我；如果你通过我的话，你必须把当前单词(即*)保存在subj 寄存器中。因而，当离开这个节点时，subj 的内容就变成了spot
 
-;; ���и�ָ��ָ��ǰ�ĵ��ʡ��ڿ�ʼ��ʱ����ָ����ӵĵ�һ�����ʡ��ھ���cat ·����ʱ��ָ�����ǰ�ƶ�һ�����ʡ���ˣ������ǵ���s2 �ڵ��ʱ�򣬵�ǰ�ڵ���ɵڶ������ʣ���runs
-;; �ڶ���·���ߺ͵�һ��һ������֮ͬ��������Ҫ����Ǹ����ʡ���������runs �������������ڼĴ���v ���棬Ȼ��״̬���ߵ���s3
+;; 总有个指针指向当前的单词。在开始的时候，它指向句子的第一个单词。在经过cat 路径的时候，指针会往前移动一个单词。因此，在我们到达s2 节点的时候，当前节点会变成第二个单词，即runs
+;; 第二条路径线和第一条一样，不同之处在于它要求的是个动词。它发现了runs ，并把它保存在寄存器v 里面，然后状态就走到了s3
 
-;; �����һ���ڵ�s3 �ϣ�ֻ��һ��pop ·��(���Ϊ��ֹ·��)
-;; �������������ڰ��������ж����ʱ��ͨ����pop ·�����������ǽ��еľ��ӷ����ǳɹ���
+;; 在最后一个节点s3 上，只有一个pop 路径(或称为终止路径)
+;; 由于我们正好在把输入序列读完的时候通过了pop 路径，所以我们进行的句子分析是成功的
 
-;; pop ·�����ص���һ�������ñ���ʽ��
+;; pop 路径返回的是一个反引用表达式：
 ;; (sentence (subject spot)
 ;;   (verb runs))
 
-;; �ݹ� 
-;; ��������Ӣ��� ATN�������ģ���еĻ�����ô������һ�������������ӵ������磬�Լ������������ʶ����ʶ���Լ����δ�����﷨Ԫ�صĶ��������
-;; ��ʶ���Ҳ���п��ܺ������ʶ���ģ��������ֽṹ���ܻ������޾���������ȥ
-;; Ҫ�����������ֽṹ�ľ��ӣ�����Ҫ��֧�ֵݹ飺
+;; 递归 
+;; 用来分析英语的 ATN，如果规模适中的话，那么它会有一个用来分析句子的主网络，以及用来分析名词短语、介词短语，以及修饰词组等语法元素的多个子网络
+;; 介词短语也是有可能含有名词短语的，并且这种结构可能会无穷无尽地延续下去
+;; 要处理下面这种结构的句子，必须要能支持递归：
 ;;        "the key on the table in the hall of the house on the hill"
 
-;; 23.3 ��ȷ����
-;; ATNӦ���ܷ�����ʹ��Ҳ�ܷ��������䡣���Ե�һ���ڵ�Ҫ������� cat ·����������(���ڳ�����)�Ͷ���(������ʹ��)
-;; ʵ���Ϸ��������޷�Ԥ��δ���ġ���ֻ������·���ߣ����߶��������뻹û�ܽ�������ʱ��ͨ�����ݵķ�ʽ�����ֳ����ǲ��еı���, ����������Щ���ݵĻ������Զ�Ƕ����ATN�����������Ĵ��������
-;; ATN���������������·����ѡ�е�˳��������ǵ����������˳��ʹ����������ƣ�����Ա�Ϳ��Ը������ȼ�������ת��·���ߵĶ�����
+;; 23.3 非确定性
+;; ATN应该能分析祈使句也能分析陈述句。所以第一个节点要有向外的 cat 路径，与名词(用于陈述句)和动词(用于祈使句)
+;; 实际上分析器是无法预见未来的。它只是在无路可走，或者读完了输入还没能结束分析时，通过回溯的方式来表现出老是猜中的表象, 不过所有这些回溯的机制是自动嵌入在ATN编译器产生的代码里面的
+;; ATN基于深度搜索，出路径被选中的顺序就是它们当初被定义的顺序。使用这样的设计，程序员就可以根据优先级来排列转换路径线的定义了
 
-;; 23.4 һ��ATN ������
-;; һ������ATN�ķ�����������������ɣ�ATN�����������������ATN�Ľ�����������һ���������ڲ�ѯ�Ĵʵ�
-;; ʹ��һ���Ƚϳ������ֹ����ƵĴʵ�
-;; ATN������ֱ�ӷ����Lisp����
-;; ATN���������ܰ�������ATN��ɶ�Ӧ�Ĵ���
-;; ʹ�ú�����Ϊ����ķ�ʽ���ڵ���Ϊ��������ת��·������ɺ�����Ĵ����
+;; 23.4 一个ATN 编译器
+;; 一个基于ATN的分析器由三个部分组成：ATN本身，用来遍历这个ATN的解释器，还有一个可以用于查询的词典
+;; 使用一个比较初级的手工编制的词典
+;; ATN本身：直接翻译成Lisp代码
+;; ATN编译器：能把整个的ATN变成对应的代码
+;; 使用函数作为表达的方式：节点会成为函数，而转换路径则会变成函数里的代码块
 
 ;;(cd "/home/klose/Documents/programming/lisp/onlisp/application") 
-(load "continuation.lisp")
-(load "amb.lisp")
+(load "continuation.lisp" :external-format charset:utf-8) 
+(load "amb.lisp" :external-format charset:utf-8)
 
-;; �Ĵ��������ù���������ʾ��
-;; ATN��ʹ�õĲ����ǼĴ����飬����һϵ�мĴ�����
-;; ������������һ��������ʱ���������һ���µĿռĴ���������Ĵ�����ѹ�������мĴ����������
+;; 寄存器组是用关联表来表示的
+;; ATN所使用的并不是寄存器组，而是一系列寄存器组
+;; 当分析器进入一个子网络时，它获得了一组新的空寄存器，这组寄存器被压在了已有寄存器组的上面
 
-;; �Ĵ�������Ҫ�������������ܴ���set-register����ʲô���֣�����������������½�һ���Ĵ���!!!
+;; 寄存器不需要事先声明。不管传给set-register的是什么名字，它都会用这个名字新建一个寄存器!!!
 (defmacro set-register (key val regs)
   `(cons (cons (cons ,key ,val) (car ,regs))
 	 (cdr ,regs)))
@@ -90,7 +90,7 @@
 ;;       (CDR REGS)) 
 
 
-;; getr��һ���Ĵ���
+;; getr读一个寄存器
 (defmacro getr (key &optional (regs 'regs))
   `(let ((result (cdr (assoc ',key (car ,regs)))))
      (if (cdr result) result (car result))))
@@ -102,14 +102,14 @@
 ;;       RESULT
 ;;       (CAR RESULT))) 
 
-;; setr���üĴ���
+;; setr设置寄存器
 (defmacro setr (key val regs)
   `(set-register ',key (list ,val) ,regs))
 
 ;; (macroexpand-1 '(setr mood 'decl regs))  
 ;; (SET-REGISTER 'MOOD (LIST 'DECL) REGS)
 
-;; pushr��һ��ֵ����Ĵ���
+;; pushr把一个值加入寄存器
 (defmacro pushr (key val regs)
   `(set-register ',key
 		 (cons ,val (cdr (assoc ',key (car ,regs))))
@@ -131,8 +131,8 @@
 ;; (setq test-register (setr Mood 'Decl (setr Subj 'Xman regs))) 
 ;; test-register ;; (((MOOD DECL) (SUBJ XMAN)))
 
-;; push,cat��jump·�������԰�������ʽ�塣��Щ����ʽֻ��������һЩsetr����
-;; ͨ�������ǵı���ʽ�����compile-cmds ��ת��·����չ���������һϵ��setr����һ�𣬳�Ϊһ�������ı���ʽ
+;; push,cat和jump路径都可以包含表达式体。这些表达式只不过会是一些setr罢了
+;; 通过对它们的表达式体调用compile-cmds ，转移路径的展开函数会把一系列setr串在一起，成为一个单独的表达式
 (defun compile-cmds (cmds)
   (if (null cmds)
       'regs
@@ -150,10 +150,10 @@
 ;; (macroexpand-1 '(SET-REGISTER 'SUBJ (LIST *) REGS))
 ;; (CONS (CONS (CONS 'SUBJ (LIST *)) (CAR REGS)) (CDR REGS))
 
-;; defnode�걻��������ڵ�, ����һ�� choose
-;; �ڵ㺯���������������ֱ��� pos �� regs��
-;; pos: �ǵ�ǰ�����ھ����е�λ��(һ������)
-;; regs: �ǵ�ǰ�ļĴ�����(Ϊһ�����������б�) 
+;; defnode宏被用来定义节点, 就是一个 choose
+;; 节点函数有两个参数，分别是 pos 和 regs：
+;; pos: 是当前输入在句子中的位置(一个整数)
+;; regs: 是当前的寄存器组(为一个关联表的列表) 
 (defmacro defnode (name &rest arcs)
   `(=defun ,name (pos regs) (choose ,@arcs)))
 
@@ -164,12 +164,12 @@
 ;;   (CHOOSE <ARC 1>
 ;; 	  <ARC 2>))
 
-;; ·��ת��
+;; 路径转换
 (defmacro cat (category next &rest cmds)
   `(if (= (length *sent*) pos) ;; 
        (fail)
-       (let ((* (nth pos *sent*))) ;; ����*���ᱻ�󶨵���ǰ�����뵥����
-	 (if (member ',category (types *)) ;;Ҫ��ǰ�����뵥�����﷨������ĳ������
+       (let ((* (nth pos *sent*))) ;; 符号*将会被绑定到当前的输入单词上
+	 (if (member ',category (types *)) ;;要求当前的输入单词在语法上属于某个类型
 	     (,next (1+ pos) ,(compile-cmds cmds)) 
 	     (fail)))))
 ;; (macroexpand-1 '(cat v v
@@ -189,16 +189,16 @@
 ;; 			       (SETR V * REGS)))))
 ;; 	  (FAIL))))
 
-;; down�����push·����Ҫ���������ĵ����ܳɹ�����
-;; sub:  ������Ŀ��ڵ�
-;; next: ��ǰ������¸��ڵ�
+;; down定义的push路径，要求对子网络的调用能成功返回
+;; sub:  子网络目标节点
+;; next: 当前网络的下个节点
 (defmacro down (sub next &rest cmds)
-  ;; ��ȻΪcat·�����ɵĴ���ֻ�ǵ����������е���һ���ڵ㣬����Ϊpush·�����ɵĴ���ʹ�õ���=bind
-  `(=bind (* pos regs) ;; *��Ϊ��ǰ�������һ���ڵ㣬pos������pos�� regs����Ϊ,(compile-cmds cmds)
-       ;;��������ĵ��ã����ý����󷵻ظ���ǰ����
-       (,sub pos (cons nil regs)  ;; regs������������ǰ��һ���µĿռĴ���(nil)��cons������ǰ��
+  ;; 虽然为cat路径生成的代码只是调用了网络中的下一个节点，但是为push路径生成的代码使用的是=bind
+  `(=bind (* pos regs) ;; *绑定为当前网络的下一个节点，pos依旧是pos， regs被绑顶为,(compile-cmds cmds)
+       ;;对子网络的调用，调用结束后返回给当前网络
+       (,sub pos (cons nil regs)  ;; regs被传入子网络前，一组新的空寄存器(nil)被cons到它的前面
 	     ) 
-     ;; ��push·���У�*���Ǳ��󶨵��������緵�صı���ʽ
+     ;; 在push路径中，*则是被绑定到从子网络返回的表达式
      (,next pos ,(compile-cmds cmds)))) 
 
 ;; (macroexpand-1 '(down np s/subj
@@ -225,8 +225,8 @@
 ;;   (FUNCALL *CONT* NP POS (CONS NIL REGS)))  
 
 
-;; jump·���������˶�·һ��
-;; ������ֱ��������Ŀ��ڵ㣬����Ҫ�����������ԣ�ͬʱ����ָ��û����ǰ�ƶ���
+;; jump路径就像发生了短路一样
+;; 分析器直接跳到了目标节点，不需要进行条件测试，同时输入指针没有向前移动。
 (defmacro jump (next &rest cmds)
   `(,next pos ,(compile-cmds cmds)))
 
@@ -235,9 +235,9 @@
 ;; (NP/DET POS
 ;; 	(SETR DET NIL REGS))
 
-;; pop·����up����
+;; pop路径由up定义
 (defmacro up (expr)
-  `(let ((* (nth pos *sent*))) ;; ��ǰ����
+  `(let ((* (nth pos *sent*))) ;; 当前单词
      (=values ,expr pos (cdr regs))))
 
 ;; (macroexpand-1 '(up `(sentence
@@ -253,27 +253,27 @@
                  syms)
      ,@body))
 
-;; ATN�������
-;; ��ʼ�ڵ�����֡�һ����Ҫ�����ı���ʽ���Լ�һ��������
-;; ���������with-parsesӦ����δ������صķ������
+;; ATN主体代码
+;; 起始节点的名字、一个需要分析的表达式，以及一个代码体
+;; 代码体告诉with-parses应该如何处理返回的分析结果
 (defmacro with-parses (node sent &body body)
   (my-with-gensyms (pos regs)
     `(progn
-       (setq *sent* ,sent) ;; Ҫ�����ľ���
-       (setq *paths* nil)  ;; ��������
-       ;; ÿ�γɹ��ķ����������������with-parses����ʽ�еĴ������һ����ֵ
-       ;; �ڴ������У�����parse����󶨵���ǰ�ķ��������
-       ;; with-parses����ʽ�᷵��@ ����Ϊ������fail����;ĩ·ʱ�ķ���ֵ
+       (setq *sent* ,sent) ;; 要分析的句子
+       (setq *paths* nil)  ;; 保存续延
+       ;; 每次成功的分析动作都会引起对with-parses表达式中的代码体的一次求值
+       ;; 在代码体中，符号parse将会绑定到当前的分析结果上
+       ;; with-parses表达式会返回@ ，因为这正是fail在穷途末路时的返回值
        (=bind (parse ,pos ,regs) (,node 0 '(nil))
 	 (if (= ,pos (length *sent*))
 	     (progn ,@body (fail))
 	     (fail))))))  
 
-;; �򵥵Ĵʵ�
+;; 简单的词典
 (defun types (w)
   (cdr (assoc w '((spot noun) (runs verb))))) 
 
-;; �����ǰ�ڵ������ʣ���ת�Ƶ�S2�ڵ㣬�����浱ǰ�Ĵ���Ϊ(SUBJ ��ǰ����)������ӡ 
+;; 如果当前节点是名词，则转移到S2节点，并保存当前寄存器为(SUBJ 当前单词)供最后打印 
 (defnode s
     (cat noun s2 
 	 (setr subj *)))
@@ -329,7 +329,7 @@
     (cat verb s3
 	 (setr v *)))
 
-;; pop��㣬��ӡ���(SENTENCE (SUBJECT 'SUBJ'�Ĵ���������) (VERB 'V'�Ĵ�������ͬ)) 
+;; pop结点，打印结果(SENTENCE (SUBJECT 'SUBJ'寄存器中内容) (VERB 'V'寄存器中内同)) 
 (defnode s3
     (up `(sentence
 	  (subject ,(getr subj))
@@ -379,10 +379,10 @@
 ;; 	      (FAIL)))))
 ;;   (S 0 '(NIL)))
 
-;; 23.5 ATN�ĸ�������
+;; 23.5 ATN的复杂例子
 
-;; һ�������ģ���ֵ亯��
-;; 22 ������ɵĴʻ�⣬ͬʱ��ÿ���ʶ���һ���б���������б���һ���������ʶ�Ӧ���﷨��ɫ����
+;; 一个更大规模的字典函数
+;; 22 个词组成的词汇库，同时把每个词都和一个列表相关联，列表由一个或多个单词对应的语法角色构成
 (defun types (word)
   (case word
     ((do does did) '(aux v))
@@ -394,8 +394,8 @@
     ((arrow arrows) '(n))
     ((i you he she him her it) '(pron))))
 
-;; ���δ��ַ�����������
-;; mods �ǵ�һ���ڵ㣬������һ�����ʡ��ڶ����ڵ���mods/n ������ȥѰ�Ҹ�������ʻ��߷���һ���������
+;; 修饰词字符串的子网络
+;; mods 是第一个节点，它接受一个名词。第二个节点是mods/n ，它会去寻找更多的名词或者返回一个分析结果
 (defnode mods
     (cat n mods/n
 	 (setr mods *)))
@@ -409,27 +409,27 @@
 ;;   (format t "Parsing: ~A~%" parse))
 ;; Parsing: (N-GROUP (ARROW TIME))
 
-;; ���ʶ���������
+;; 名词短语子网络
 (defnode np
-    ;;����һ���޶���(����˵"the")
+    ;;读入一个限定词(比如说"the")
     (cat det np/det
 	 (setr det *))
-  ;;ֱ����ת
+  ;;直接跳转
   (jump np/det
 	(setr det nil))
-  ;; ������һ�����ʣ���ô���Ϳ���ת�Ƶ��ڵ�pron 
+  ;; 读到了一个代词，那么它就可以转移到节点pron 
   (cat pron pron
        (setr n *)))
 
 (defnode pron
-    ;; �����������
+    ;; 弹出这个网络
     (up `(np (pronoun ,(getr n)))))
 
 (defnode np/det
-    ;; ���δ�������
+    ;; 修饰词子网络
     (down mods np/mods
 	  (setr mods *))
-	  ;; ֱ�ӽ���
+	  ;; 直接进入
 	  (jump np/mods
 		(setr mods nil)))
 
@@ -441,7 +441,7 @@
     (up `(np (det ,(getr det))
 	     (modifiers ,(getr mods))
 	     (noun ,(getr n))))
-  ;;������ʶ�������
+  ;;跳到介词短语网络
   (down pp np/pp
 	(setr pp *)))
 
@@ -466,7 +466,7 @@
 ;;     (PP (PREP LIKE)
 ;; 	(OBJ (NP (PRONOUN HIM)))))
 
-;; ��ʶ�������
+;; 介词短语网络
 (defnode pp
     (cat prep pp/prep
 	 (setr prep *)))
@@ -479,13 +479,13 @@
     (up `(pp (prep ,(getr prep))
 	     (obj ,(getr op)))))
 
-;; ������������
+;; 整个句子网络
 (defnode s
-    ;; ������
+    ;; 陈述句
     (down np s/subj
 	  (setr mood 'decl)
 	  (setr subj *))
-  ;; ��ʹ��
+  ;; 祈使句
   (cat v v
        (setr mood 'imp)
        (setr subj '(np (pron you)))
@@ -513,7 +513,7 @@
 	    (obj ,(getr obj)))))
 
 ;; (with-parses s '(time flies like an arrow)
-;;   (pprint parse))��
+;;   (pprint parse))　
 
 ;; (S (MOOD DECL)
 ;;    (SUBJ (NP (DET NIL) (MODIFIERS (N-GROUP TIME))

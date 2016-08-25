@@ -46,12 +46,12 @@
 ;; (bos 1 1)(bos 1 2)(bos 2 1)(bos 2 2)c
 ;; Value: @ 
 
-;; ËÑË÷Ê÷µÄ¼ôÖ¦×÷ÎªÒ»ÖÖÓÅ»¯¼¼ÊõÈ´¸ß¶ÈÒÀÀµchooseµÄÊµÏÖÏ¸½Ú
-;; ÓÃº¯Êıfail±¾Éí×ö±ê¼Ç, 
+;; æœç´¢æ ‘çš„å‰ªæä½œä¸ºä¸€ç§ä¼˜åŒ–æŠ€æœ¯å´é«˜åº¦ä¾èµ–chooseçš„å®ç°ç»†èŠ‚
+;; ç”¨å‡½æ•°failæœ¬èº«åšæ ‡è®°, 
 (define (mark)
   (set! *paths* (cons fail *paths*)))
 
-;; µ÷ÓÃcutÈÃpaths Ò»Ö±ÍËÕ»£¬Ö±µ½µ¯³ö×îĞÂ½üÑ¹ÈëµÄ±ê¼Ç
+;; è°ƒç”¨cutè®©paths ä¸€ç›´é€€æ ˆï¼Œç›´åˆ°å¼¹å‡ºæœ€æ–°è¿‘å‹å…¥çš„æ ‡è®°
 (define (cut)
   (cond ((null? *paths*))
     ((eq? (car *paths*) fail)
@@ -60,18 +60,18 @@
       (set! *paths* (cdr *paths*))
       (cut)))) 
 
-;; Ò»µ©ÕÒµ½ÁËÓĞÓ²±ÒµÄºĞ×Ó£¬ÎÒÃÇ¾Í»á´ÓÏÂÒ»¸ö³ÇÊĞ¼ÌĞøÎÒÃÇµÄËÑË÷
+;; ä¸€æ—¦æ‰¾åˆ°äº†æœ‰ç¡¬å¸çš„ç›’å­ï¼Œæˆ‘ä»¬å°±ä¼šä»ä¸‹ä¸€ä¸ªåŸå¸‚ç»§ç»­æˆ‘ä»¬çš„æœç´¢
 (define (find-boxes-mark-cut)
   (set! *paths* ())
   (let ((city (choose '(la ny bos))))
-    (mark) ;; ÒÔ³ÇÊĞ×÷Îª¼ôÖ¦µÄ±ê¼Ç
+    (mark) ;; ä»¥åŸå¸‚ä½œä¸ºå‰ªæçš„æ ‡è®°
     (newline)
     (let* ((store (choose '(1 2)))
         (box (choose '(1 2))))
       (let ((triple (list city store box)))
         (display triple)
         (if (coin? triple)
-          (begin (cut) (display 'c))) ; ÕÒµ½ºóÖ±½Ó°Ñ*path*ÖĞµÄÄÚÈİ¼õÉÙµ½ÉÏÒ»¸ö±ê¼ÇfailµÄµØµã
+          (begin (cut) (display 'c))) ; æ‰¾åˆ°åç›´æ¥æŠŠ*path*ä¸­çš„å†…å®¹å‡å°‘åˆ°ä¸Šä¸€ä¸ªæ ‡è®°failçš„åœ°ç‚¹
         (fail)))))
 
 ;; (find-boxes-mark-cut)

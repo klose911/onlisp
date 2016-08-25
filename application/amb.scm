@@ -66,17 +66,17 @@
 ;; (gen-prime 5) 
 ;; (bag-of (gen-prime 5)) 
 
-;; »ùÓÚ¹ã¶ÈÓÅÏÈËÑË÷µÄchoose fail
-;; [Ê¾Àı´úÂë 22.14] choose µÄ Scheme °æÕıÈ·ÊµÏÖ
+;; åŸºäºå¹¿åº¦ä¼˜å…ˆæœç´¢çš„choose fail
+;; [ç¤ºä¾‹ä»£ç  22.14] choose çš„ Scheme ç‰ˆæ­£ç¡®å®ç°
 (define *paths* ())
 (define failsym '@)
 
-;; »ùÓÚ¹ã¶ÈÓÅÏÈËÑË÷µÄchoose£¬ÕâÑù¿ÉÒÔ±ÜÃâchooseËÀÑ­»·
+;; åŸºäºå¹¿åº¦ä¼˜å…ˆæœç´¢çš„chooseï¼Œè¿™æ ·å¯ä»¥é¿å…chooseæ­»å¾ªç¯
 (define (true-choose choices)
   (call-with-current-continuation
     (lambda (cc)
       (set! *paths* (append *paths*
-;;µ±³ÌĞòµ½´ïÑ¡ÔñµãµÄÊ±ºò£¬ÓëÃ¿Ò»¸öÑ¡ÔñÏà¶ÔÓ¦µÄĞøÑÓ¶¼»á±»¼ÓÈëµ½ÓÃÀ´±£´æÂ·¾¶µÄÁĞ±íºóÃæ
+;;å½“ç¨‹åºåˆ°è¾¾é€‰æ‹©ç‚¹çš„æ—¶å€™ï¼Œä¸æ¯ä¸€ä¸ªé€‰æ‹©ç›¸å¯¹åº”çš„ç»­å»¶éƒ½ä¼šè¢«åŠ å…¥åˆ°ç”¨æ¥ä¿å­˜è·¯å¾„çš„åˆ—è¡¨åé¢
           (map (lambda (choice)
               (lambda () (cc choice)))
             choices)))
