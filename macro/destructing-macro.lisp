@@ -1,35 +1,35 @@
-;; 18 �⹹: �Ǹ�ֵ��һ����ʽ
-;; ������setq��setf�ĸ�ֵ����ֻ�Ƕ����ı���
-;; �⹹����ֻ�ǰѵ���������Ϊ��һ�����������Ǹ���һ�����ڱ�����ģʽ 
+;; 18 解构: 是赋值的一般形式
+;; 操作符setq和setf的赋值对象只是独立的变量
+;; 解构不再只是把单个变量作为第一个参数，而是给出一个关于变量的模式 
 
-;; 18.1 �б��ϵĽ⹹
+;; 18.1 列表上的解构
 
 ;; (let ((x (first lst))
 ;;     (y (second lst))
 ;;     (z (third lst)))
 ;;   ...)
 
-;; �⹹�Ѹ�ֵ�ͷ��ʲ����϶�Ϊһ
+;; 解构把赋值和访问操作合二为一
 ;; x -> (first lst), y->(second lst) z-> (third lst)
 ;; (destructuring-bind (x y z) lst
 ;;   ...)
 
-;; �⹹ʹ�ô������̣������Ķ������� 
+;; 解构使得代码更简短，容易阅读！！！ 
 ;; (destructuring-bind ((first last) (month day year) . notes)
 ;;   birthday
 ;;   ...) 
 
 ;; (defun iota (n) (loop for i from 1 to n collect i))
 ;; a-> 'alpha, b-> 'bee, one->1, two->2, three->3
-;; �ܹ����ں�����б������б������ͳ���(&enviorment)�����ԷŽ��⹹��Ĳ����б���
+;; 能够放在宏参数列表的所有变量类型除了(&enviorment)都可以放进解构宏的参数列表内
 ;; (destructuring-bind ((a &optional (b 'bee)) one two three)
 ;;      `((alpha) ,@(iota 3)) 
 ;;    (list a b three two one)) => (ALPHA BEE 3 2 1)
 
-;; 18.2 �����ṹ: �⹹�������κζ���⹹ 
+;; 18.2 其他结构: 解构可用于任何对象解构 
 
-;; 18.2.1 ͨ�����н⹹������
-;; ��destruc�����ı���ƥ��ת����һϵ��Ƕ�׵�let�����ɴ��� 
+;; 18.2.1 通用序列解构操作符
+;; 将destruc产生的变量匹配转化成一系列嵌套的let，生成代码 
 (defun dbind-ex (binds body)
   (if (null binds)
       `(progn ,@body)
@@ -44,7 +44,7 @@
 			    binds)
 		    body)))) 
 
-;; ����ƥ��ģʽ����ÿ�������������ڶ�Ӧ�����λ�ù�����һ��
+;; 遍历匹配模式，将每个变量和运行期对应对象的位置关联在一起
 (defun destruc (pat seq &optional (atom? #'atom) (n 0))
   (if (null pat)
       nil
@@ -59,13 +59,13 @@
 	      (if (funcall atom? p)
 		  (cons `(,p (elt ,seq ,n))
 			rec)
-		  ;; һ���µı���(���ɷ���)�����󶨵�ÿ����������
+		  ;; 一个新的变量(生成符号)将被绑定到每个子序列上
 		  (let ((var (gensym)))
 		    (cons (cons `(,var (elt ,seq ,n))
 				(destruc p var atom?))
 			  rec))))))))
 
-;; �ڶ��������������б��������������ǵ��������
+;; 第二个参数可以是列表，向量或者它们的任意组合
 (defmacro dbind (pat seq &body body)
   (let ((gseq (gensym)))
     `(let ((,gseq ,seq))
@@ -168,10 +168,10 @@
 ;; 	   (C (SUBSEQ #:G3507 1)))
 ;;        (PROGN BODY)))
 
-;; ��������ڸ�����������û�а��������ڴ���Ԫ�أ��⹹������������һ������
+;; 如果运行期给出的序列里没有包含所有期待的元素，解构操作符将产生一个错误：
 (dbind (a b c) (list 1 2)) ;; => SYSTEM::LIST-ELT: index 2 too large for (1 2)  
 
-;; 18.2.2 ���� with-matrix�꣬���ڽ⹹��ά����
+;; 18.2.2 矩阵 with-matrix宏，用于解构两维数组
 (defmacro with-matrix (pats ar &body body)
   (let ((gar (gensym)))
     `(let ((,gar ,ar))
@@ -215,7 +215,7 @@
 (with-array ((a 0 0) (d 1 1) (i 2 2)) ar
 	    (values a d i)) ;; => 0, 11, 22
 
-;; 18.3 �ṹ��Ľ⹹
+;; 18.3 结构体的解构
 
 (defun mkstr (&rest args)
   (with-output-to-string (s)
@@ -227,8 +227,8 @@
   (values (intern (apply #'mkstr args))))
 ;; (symb 'ar "Madi" #\L #\L 0) => |ARMadiLL0| 
 
-;; name: �ṹ��������Ϊǰ׺
-;; field: �ֶ��� 
+;; name: 结构体名字作为前缀
+;; field: 字段名 
 (defmacro with-struct ((name . fields) struct &body body)
   (let ((gs (gensym)))
     `(let ((,gs ,struct))
@@ -251,32 +251,32 @@
 ;; 	   (TITLE (VISITOR-TITLE #:G3552)))
 ;;        (LIST NAME FIRM TITLE)))
 
-;; 18.3 ���õĽ⹹ 
+;; 18.3 引用的解构 
 (defclass thing ()
   ((x :initarg :x :accessor thing-x)
    (y :initarg :y :accessor thing-y)))
 ;; => #<STANDARD-CLASS THING> 
 (setq thing (make-instance 'thing :x 0 :y 1))
 ;; => #<THING #x000335767B08>
-;; with-slots����xʵ������thing��������x����ֱ�����ã�������
-;; incf��ֱ���޸�thing�е�x��ֵ
+;; with-slots宏中x实际上是thing这个对象的x属性直接引用！！！！
+;; incf会直接修改thing中的x的值
 (with-slots (x y) thing
   (incf x) (incf y)) 
 (thing-x thing) ;; => 1
 (thing-y thing) ;; => 2
 
-;; ���ź� 
-;; call-by-name/symbol/ref�� a��������thing��x���Եķ��ţ�����
+;; 符号宏 
+;; call-by-name/symbol/ref， a是引用了thing中x属性的符号！！！
 (symbol-macrolet ((a (thing-x thing)))
   (setf a 100))
 (thing-x thing) ;; => 100
 
-;; call-by-value aֻ��һ���ֲ���������������
+;; call-by-value a只是一个局部变量！！！！！
 (let ((a (thing-x thing)))
   (setf a 200)) ;; => 200 
 (thing-x thing) ;; => 100
 
-;; with-slots���ǽ���symbol-macroletʵ�ֵ�,������let
+;; with-slots宏是借助symbol-macrolet实现的,而不是let
 (defmacro with-places (pat seq &body body)
   (let ((gseq (gensym)))
     `(let ((,gseq ,seq))
@@ -304,19 +304,19 @@
 	       (setf c '(tre)))
   lst) ;; => (UNO (2 TRE) 4)
 
-;; dbind��һ����������һ��ֵ�ϣ���with-placesȴ�ǽ�����������һ�������ҵ�һ��ֵ��ָ�����, ÿһ�����ö���Ҫ����һ�β�ѯ,��ʵ��dbindҪ�죡������
+;; dbind将一个变量关联一个值上，而with-places却是将变量关联到一组用来找到一个值的指令集合上, 每一个引用都需要进行一次查询,事实上dbind要快！！！！
 
-;; 18.4 ƥ��: �⹹�Ǹ�ֵ�ķ�����ƥ���ǽ⹹�ķ���
+;; 18.4 匹配: 解构是赋值的泛化，匹配是解构的泛化
 
 ;; (p ?x ?y c ?x)
 ;; (p a b c a)
-;; �� ?x = a ���� ?y = b ʱƥ��
+;; 当 ?x = a 并且 ?y = b 时匹配
 
 ;; (p ?x b ?y a)
 ;; (p ?y b c a)
-;; �� ?x = ?y = c ʱƥ��
+;; 当 ?x = ?y = c 时匹配
 
-;; Լ����ģʽ��������'��'��ʼ��, ����ͨ���޸�varsym?�������
+;; 约定：模式变量是以'？'开始的, 可以通过修改varsym?函数完成
 
 (defun varsym? (x)
   (and (symbolp x) (eq (char (symbol-name x) 0) #\?)))
@@ -327,7 +327,7 @@
   `(let ((it ,test-form))
      (if it ,then-form ,else-form))) 
 
-;; x:ģʽ���������x������binds�У�����x��ֵ�Լ�����صİ�
+;; x:模式变量，如果x存在于binds中，返回x的值以及他相关的绑定
 (defun binding (x binds)
   (labels ((recbind (x binds)
 	     (aif (assoc x binds)
@@ -351,66 +351,66 @@
 
 (defun match (x y &optional binds)
   (acond2
-   ;; x��yֵ��ͬ��_��ͨ��� ��һ������ֵ�ǵ�ǰ�İ󶨣��ڶ�������ֵ��T 
+   ;; x于y值相同，_是通配符 第一个返回值是当前的绑定，第二个返回值是T 
    ((or (eql x y) (eql x '_) (eql y '_)) (values binds t)) ;; rule 1
-   ;; ģʽ����x�ڵ�ǰ�������ҵ���У��y�Ƿ��ǰ��е�ֵ��it��ֵ��(binding x binds)�ĵ�һ������ֵ�� ���ǵ�ǰ���б���x�󶨵�ֵ 
+   ;; 模式变量x在当前绑定中能找到，校验y是否是绑定中的值，it的值是(binding x binds)的第一个返回值， 就是当前绑定中变量x绑定的值 
    ((binding x binds) (match it y binds)) ;; rule 2 -> rule1 
-   ;; ģʽ����y�ڵ�ǰ�������ҵ���У��x�Ƿ��ǰ��е�ֵ
+   ;; 模式变量y在当前绑定中能找到，校验x是否是绑定中的值
    ((binding y binds) (match x it binds)) ;; rule 3 -> rule1
-   ;; ģʽ����x�޷��ڵ�ǰ���ҵ���Ӧ��ֵ����x��y������
-   ((varsym? x) (values (cons (cons x y) binds) t)) ;; rule4 -> ִ��rule6��(match (cdr x) (cdr y)..
-   ;; ģʽ����x�޷��ڵ�ǰ���ҵ���Ӧ��ֵ����x��y������
-   ((varsym? y) (values (cons (cons y x) binds) t)) ;; rule5 -> ִ��rule6��(match (cdr x) (cdr y).. 
-   ;; ���(car x) �� (car y)ƥ�䣬 ��ƥ�� (cdr x) (cdr y) 
+   ;; 模式变量x无法在当前绑定找到对应的值，把x和y建立绑定
+   ((varsym? x) (values (cons (cons x y) binds) t)) ;; rule4 -> 执行rule6中(match (cdr x) (cdr y)..
+   ;; 模式变量x无法在当前绑定找到对应的值，把x和y建立绑定
+   ((varsym? y) (values (cons (cons y x) binds) t)) ;; rule5 -> 执行rule6中(match (cdr x) (cdr y).. 
+   ;; 如果(car x) 和 (car y)匹配， 则匹配 (cdr x) (cdr y) 
    ((and (consp x) (consp y) (match (car x) (car y) binds)) 
     (match (cdr x) (cdr y) it)) ;; rule6
-   ;; ��ƥ��
+   ;; 不匹配
    (t (values nil nil)))) ;; rule7 
 
 
 (match '(p a b c a) '(p ?x ?y c ?x))
 ;; => ((?Y . B) (?X . A)), T
-;; rule6���� 
+;; rule6成立 
 (and (consp '(p a b c a)) (consp '(p ?x ?y c ?x)) (match 'p 'p nil)) ;; => NIL,T
-;; rule1����
+;; rule1成立
 (match 'p 'p nil) ;; => NIL,T 
 (match '(a b c a) '(?x ?y c ?x)) 
-;; rule5 ����
+;; rule5 成立
 (match 'a '?x) ;;  => ((?X . A)), T  
 (match '(b c a) '(?y c ?x)
        '((?X . A))) 
-;; rule5 ����
+;; rule5 成立
 (match 'b '?y '((?X . A))) ;; => ((?Y . B) (?X . A)), T 
 (match '(c a) '(c ?x) '((?Y . B) (?X . A))) 
-;; rule6����
+;; rule6成立
 (match 'c 'c '((?Y . B) (?X . A))) 
-;; rule5 ����
+;; rule5 成立
 (match 'a '?x '((?Y . B) (?X . A)))
-;; rule4����
+;; rule4成立
 (binding '?x '((?Y . B) (?X . A))) ;; => A, (?X . A) 
 (match 'a '?x '((?Y . B) (?X . A))) ;; => ((?Y . B) (?X . A)), T
 
-;; ����ƥ�������
+;; 慢的匹配操作符
 (defmacro aif2 (test &optional then else)
   (let ((win (gensym)))
     `(multiple-value-bind (it ,win) ,test  
        (if (or it ,win) ,then ,else))))
 
-;; pat: ģʽ��ģʽ����
-;; seq: ���У������ֵ
-;; then: ģʽƥ��ɹ����ִ�����
-;; else: ģʽƥ��ʧ�ܺ��ִ�����
+;; pat: 模式，模式变量
+;; seq: 序列，具体的值
+;; then: 模式匹配成功后的执行语句
+;; else: 模式匹配失败后的执行语句
 (defmacro if-match (pat seq then &optional else)
-  ;; ͨ���Ƚ�ģʽ�������������� 
+  ;; 通过比较模式跟序列来建立绑定 
   `(aif2 (match ',pat ,seq)
-	 ;; ��then�����ǳ��ֵ�ģʽ�����б��滻�������ж�Ӧ�󶨵�ֵ
+	 ;; 把then表达是出现的模式变量列表替换成序列中对应绑定的值
 	 (let ,(mapcar #'(lambda (v)
 			   `(,v (binding ',v it)))
 		       (vars-in then #'atom))
 	   ,then)
 	 ,else))
 
-;; ��ȡһ������ʽ���ڳ��ֵ�ģʽ�����б�  
+;; 获取一个表达式中在出现的模式变量列表  
 (defun vars-in (expr &optional (atom? #'atom))
   (if (funcall atom? expr)
       (if (var? expr) (list expr))
@@ -443,5 +443,5 @@
 ;; 	   (VALUES ?X ?Y))
 ;; 	 NIL)
 
-;; if-match �̣ܶ��������Ƿǳ���Ч. �������ڰ��������ж������ˣ����ܵ�һ�������ڱ����ھ�����֪�ġ��������ǣ��ڽ���ƥ��Ĺ����У��������б�����ű�����
+;; if-match 很短，但并不是非常高效. 在运行期把两个序列都遍历了，尽管第一个序列在编译期就是已知的。更糟糕的是，在进行匹配的过程中，还构造列表来存放变量绑定
 
