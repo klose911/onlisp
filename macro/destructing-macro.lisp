@@ -72,7 +72,7 @@
        ,(dbind-ex (destruc pat gseq #'atom) body))))
 
 (dbind (a b c) #(1 2 3)
-       (list a b c)) ;; => (1 2 3)
+  (list a b c)) ;; => (1 2 3)
 
 ;; (macroexpand-1 '(dbind (a b c) #(1 2 3)
 ;; 		 (list a b c))) 
@@ -135,7 +135,7 @@
 ;;        (list 3 4 5)) ;; => (3 4 5) 
 
 (dbind (a (b c) d) '(1 #(2 3) 4)
-       (list a b c d)) ;; => (1 2 3 4)
+  (list a b c d)) ;; => (1 2 3 4)
 
 ;; (macroexpand-1  '(dbind (a (b c) d) '(1 #(2 3) 4)
 ;; 		  (list a b c d))) 
@@ -145,7 +145,7 @@
 ;; 	 (PROGN (LIST A B C D)))))
 
 (dbind (a (b . c) &rest d) '(1 "fribble" 2 3 4)
-       (list a b c d)) ;; => (1 #\f "ribble" (2 3 4))
+  (list a b c d)) ;; => (1 #\f "ribble" (2 3 4))
 ;; (macroexpand-1 '(dbind (a (b . c) &rest d) '(1 "fribble" 2 3 4)
 ;; 		 (list a b c d)))
 ;; => (LET ((#:G3504 '(1 "fribble" 2 3 4)))
@@ -445,3 +445,61 @@
 
 ;; if-match 很短，但并不是非常高效. 在运行期把两个序列都遍历了，尽管第一个序列在编译期就是已知的。更糟糕的是，在进行匹配的过程中，还构造列表来存放变量绑定
 
+;; 快速匹配符
+(defmacro if-match (pat seq then &optional else)
+  `(let ,(mapcar #'(lambda (v) `(,v ',(gensym)))
+                 (vars-in pat #'simple?))
+     (pat-match ,pat ,seq ,then ,else)))
+
+;; 将整个变量列表绑定到 gensym 
+(defmacro with-gensyms-1 (syms &body body)
+  `(let ,(mapcar #'(lambda (s)
+		     `(,s (gensym)))
+		 syms)
+     ,@body))
+
+(defmacro pat-match (pat seq then else)
+  (if (simple? pat)
+      (match1 `((,pat ,seq)) then else)
+      (with-gensyms-1 (gseq gelse)
+        `(labels ((,gelse () ,else))
+           ,(gen-match (cons (list gseq seq) 
+                             (destruc pat gseq #'simple?))
+                       then 
+                       `(,gelse))))))
+
+(defun simple? (x) (or (atom x) (eq (car x) 'quote)))
+
+(defun gen-match (refs then else)
+  (if (null refs)
+      then
+      (let ((then (gen-match (cdr refs) then else)))
+        (if (simple? (caar refs))
+            (match1 refs then else)
+            (gen-match (car refs) then else)))))
+
+(defun match1 (refs then else)
+  (dbind ((pat expr) . rest) refs
+    (cond ((gensym? pat)
+           `(let ((,pat ,expr))
+              (if (and (typep ,pat 'sequence)
+                       ,(length-test pat rest))
+                  ,then
+                  ,else)))
+          ((eq pat '_) then)
+          ((var? pat)
+           (let ((ge (gensym)))
+             `(let ((,ge ,expr))
+                (if (or (gensym? ,pat) (equal ,pat ,ge))
+                    (let ((,pat ,ge)) ,then)
+                    ,else))))
+          (t `(if (equal ,pat ,expr) ,then ,else)))))
+
+(defun gensym? (s) 
+  (and (symbolp s) (not (symbol-package s))))
+
+(defun length-test (pat rest)
+  (let ((fin (caadar (last rest))))
+    (if (or (consp fin) (eq fin 'elt))
+        `(= (length ,pat) ,(length rest))
+        `(> (length ,pat) ,(- (length rest) 2)))))

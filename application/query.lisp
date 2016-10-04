@@ -44,7 +44,7 @@
 
 ;; 查询所有出生1697年的画家
 ;;  (and (painter ?x ?y ?z)
-;;     (dates ?x 1697 ?w))　
+;;     (dates ?x 1697 ?w))
 
 ;; 查询语法
 ;; <query> : (<symbol> <argument>*)
@@ -54,9 +54,9 @@
 
 ;; <argument> : ?<symbol>
 ;;            : <symbol>
-;;            : <number>　
+;;            : <number>
 
-;; 对于真值采取怀疑论的观点：除了数据库中存在的记录，其他都认为是假　
+;; 对于真值采取怀疑论的观点：除了数据库中存在的记录，其他都认为是假
 
 ;; 查询解释器接受查询，并根据它从数据库里生成答案
 ;; 查询编译器接受查询，然后生成一个程序，当这个程序运行时，从数据库里生成答案
@@ -114,7 +114,7 @@
 
 
 ;; (interpret-query '(and (painter ?x ?y ?z)
-;; 			(dates ?x 1697 ?w)))  　
+;; 			(dates ?x 1697 ?w)))
 ;; => (((?W . 1768) (?Z . VENETIAN) (?Y . ANTONIO) (?X . CANALE)) ((?W . 1772) (?Z . ENGLISH) (?Y . WILLIAM) (?X . HOGARTH)))
 
 ;; (car '(and (painter ?x ?y ?z)
@@ -123,7 +123,7 @@
 ;; 	   (dates ?x 1697 ?w)))) 
 ;; => ((DATES ?X 1697 ?W) (PAINTER ?X ?Y ?Z))
 
-　
+
 (defun interpret-and (clauses binds)
   (if (null clauses)
       (list binds)
@@ -174,3 +174,108 @@
 ;;   (format t "~A lived over 70 years.~%" ?x))
 
 ;; 19.5 查询编译器
+;; 解释器实现了我们想要的功能，但效率不好
+;; 1. 查询结构在编译期就是已知的，解释器还是把分析工作放在了运行期完成
+;; 2. 解释器通过构造列表来保存变量绑定，其实，本可以用变量来保存它们自己的值
+
+;; query中的参数现在可以被求值!!!
+(defmacro with-answer-compile (query &body body)
+  `(with-gensyms-1 ,(vars-in query #'simple?)
+     ;; 宏展开时候调用compile-query函数,产生查询的代码，这些代码在运行期间运行，产生结果
+     ,(compile-query query `(progn ,@body))))
+
+;; 这些函数不再生成绑定，它们直接生成代码
+(defun compile-query (q body)
+  (case (car q)
+    (and (compile-and (cdr q) body))
+    (or (compile-or (cdr q) body))
+    (not (compile-not (cadr q) body))
+    ;; 增加了一个lisp操作符，它可以跟任意Lisp表达式
+    ;; 它不会生成任何绑定，但它将排除那些使表达式返回nil的绑定
+    ;; 在需要使用诸如 '>'的内置谓词时，lisp操作符就非常有用
+    (lisp `(if ,(cadr q) ,body))
+    (t (compile-simple q body))))
+
+(defun compile-simple (q body)
+  (let ((fact (gensym)))
+    `(dolist (,fact (db-query ',(car q)))
+       (pat-match ,(cdr q) ,fact ,body nil))))
+
+(defun compile-and (clauses body)
+  (if (null clauses)
+      body
+      (compile-query (car clauses)
+		     (compile-and (cdr clauses) body))))
+
+(defun compile-or (clauses body)
+  (if (null clauses)
+      nil
+      (let ((gbod (gensym))
+	    (vars (vars-in body #'simple?)))
+	`(labels ((,gbod ,vars ,body))
+	   ,@(mapcar #'(lambda (cl)
+			 (compile-query cl `(,gbod ,@vars)))
+		     clauses)))))
+
+(defun compile-not (q body)
+  (let ((tag (gensym)))
+    `(if (block ,tag
+	   ,(compile-query q `(return-from ,tag nil))
+	   t)
+	 ,body)))
+
+;; (setq my-favorite-year 1723)
+;; (with-answer-compile (dates ?x my-favorite-year ?d) 
+;;   (format t "~A was born in my favorite year.~%" ?x))
+;; => REYNOLDS was born in my favorite year. 
+
+;; (macroexpand-1 '(with-answer-compile (dates ?x my-favorite-year ?d)
+;; 		 (format t "~A was born in my favorite year.~%" ?x)))
+;; => 
+;; (WITH-GENSYMS-1 (?X ?D)
+;;  (DOLIST (#:G3527 (DB-QUERY 'DATES))
+;;    (PAT-MATCH (?X MY-FAVORITE-YEAR ?D) #:G3527
+;; 	      (PROGN (FORMAT T "~A was born in my favorite year.~%" ?X)) NIL)))
+
+
+;; (with-gensyms-1 (?x ?d) 
+;;   (compile-query '(dates ?x my-favorite-year ?d)
+;; 		 '(PROGN (FORMAT T "~A was born in my favorite year.~%" ?X))))
+;; (with-gensyms-1 (?x ?d) 
+;;   (compile-simple '(dates ?x my-favorite-year ?d)
+;; 		  '(PROGN (FORMAT T "~A was born in my favorite year.~%" ?X)))) 
+
+
+;; (with-gensyms-1 (?x ?d) 
+;;   (compile-simple '(dates ?x my-favorite-year ?d)
+;; 		  '(PROGN (FORMAT T "~A was born in my favorite year.~%" ?X)))) 
+;; => 
+;; (DOLIST (#:G3530 (DB-QUERY 'DATES))
+;;   (PAT-MATCH (?X MY-FAVORITE-YEAR ?D) #:G3530 (PROGN (FORMAT T "~A was born in my favorite year.~%" ?X)) NIL))
+
+;; (db-query 'dates) ;; => ((REYNOLDS 1723 1792) (CANALE 1697 1768) (HOGARTH 1697 1772))
+
+;; (with-gensyms-1 (?x ?d) 
+;;   (PAT-MATCH (?X 1723 ?D)
+;; 	     '(REYNOLDS 1723 1792)
+;; 	     (PROGN (FORMAT T "~A was born in my favorite year.~%" ?X)) NIL)) 
+;; => REYNOLDS was born in my favorite year. ,nil
+
+;; (with-gensyms-1 (?x ?d) 
+;;   (PAT-MATCH (?X 1723 ?D)
+;; 	     '(CANALE 1697 1768) 
+;; 	     (PROGN (FORMAT T "~A was born in my favorite year.~%" ?X)) NIL))
+;; => nil, nil
+
+;; (with-answer-compile (and (dates ?x ?b ?d)
+;;     (lisp (> (- ?d ?b) 70)))
+;;   (format t "~A lived over 70 years.~%" ?x))
+;; CANALE lived over 70 years.
+;; HOGARTH lived over 70 years.
+
+(with-answer-compile (and (painter ?x _ 'english)
+			  (dates ?x ?b _)
+			  (not (and (painter ?x2 _ 'venetian)
+				    (dates ?x2 ?b _))))
+  (princ ?x))
+;; => REYNOLDS 
