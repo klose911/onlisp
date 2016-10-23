@@ -273,9 +273,9 @@
 ;; CANALE lived over 70 years.
 ;; HOGARTH lived over 70 years.
 
-(with-answer-compile (and (painter ?x _ 'english)
-			  (dates ?x ?b _)
-			  (not (and (painter ?x2 _ 'venetian)
-				    (dates ?x2 ?b _))))
-  (princ ?x))
+;; (with-answer-compile (and (painter ?x _ 'english)
+;; 			  (dates ?x ?b _)
+;; 			  (not (and (painter ?x2 _ 'venetian)
+;; 				    (dates ?x2 ?b _))))
+;;   (princ ?x))
 ;; => REYNOLDS 

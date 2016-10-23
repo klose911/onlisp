@@ -1,3 +1,5 @@
+(load "continuation.lisp" :external-format charset:utf-8)
+
 ;; 22 非确定性
 ;; 22.1 概念 
 ;; choose函数，接受一个列表，并返回一个元素 
@@ -205,4 +207,3 @@
 ;; 2. 进行剪枝
 
 ;; 22.6 真正的非确定性 
-
